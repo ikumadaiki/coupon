@@ -1,6 +1,7 @@
-print('cost_unaware.py')
+# print('cost_unaware.py')
 
 import numpy as np
+import lightgbm as lgb
 
 import init_data
 df = init_data.get_data()
@@ -17,68 +18,63 @@ def split_data(df, seed):
     T = df['treatment']
     y = df['visit']
 
-    X_train, X_test, T_train, T_test, y_train, y_test = train_test_split(X, T, y, test_size=0.3, random_state=seed, stratify=T)
+
+    X_train, X_test, T_train, T_test, y_train, y_test = train_test_split(
+        X, T, y, train_size=0.7, random_state=seed, stratify=T
+    )
+
+    # インデックスをリセット
+    T_test = T_test.reset_index(drop=True)
+    y_test = y_test.reset_index(drop=True)
 
     return X_train, X_test, T_train, T_test, y_train, y_test
 
 X_train, X_test, T_train, T_test, y_train, y_test = split_data(df, seed)
 
-def softmax(scores): 
-    if scores.ndim == 2:
-        scores = scores.T
-        scores = scores - np.max(scores, axis=0)
-        y = np.exp(scores) / np.sum(np.exp(scores), axis=0)
-        return y.T
+def custom_objective(y_pred: np.ndarray, train_data: lgb.Dataset):
+    y = train_data.get_label()
+    t = T_train.values
 
-    scores = scores - np.max(scores) # オーバーフロー対策 
-    return np.exp(scores) / np.sum(np.exp(scores))
+    treatment = (t == 1)
+    control = (t == 0)
 
+    N_1 = np.sum(treatment)
+    N_0 = np.sum(control)
 
-def softmax_naive(scores):
-    exps = np.exp(scores)
-    return exps / np.sum(exps)
+    exp_scores = np.exp(y_pred - np.max(y_pred))
+    sum_exp_scores = np.sum(exp_scores)
+    p = exp_scores / sum_exp_scores
 
-N1 = np.sum(T_train == 1)
-N0 = np.sum(T_train == 0)
+    sum_y_treat = np.sum(y[treatment])
+    sum_y_control = np.sum(y[control])
 
-y_train_1 = y_train[T_train == 1]
-y_train_0 = y_train[T_train == 0]
+    grad = (p * sum_y_treat / N_1) - (p * sum_y_control / N_0)
 
-X_train_1 = X_train[T_train == 1]
-X_train_0 = X_train[T_train == 0]
+    # (-1)^t(k) * y_k / N_t(k) 項の計算
+    last_term = ((-1) ** treatment) * y / np.where(treatment, N_1, N_0)
+    grad += last_term
+    p_one_minus_p = p * (1 - p)
+    hess = (p_one_minus_p * sum_y_treat / N_1) - (p_one_minus_p * sum_y_control / N_0)
+
+    return grad, hess
 
 def get_tau_direct():
-    import numpy as np
-    from scipy.optimize import minimize
+    # データセットの作成
+    dtrain = lgb.Dataset(X_train, label=y_train)
+    # LightGBMのパラメータ
+    params = {
+        'objective': lambda y_pred, train_data: custom_objective(y_pred, train_data)
+        }
 
+    # モデルの訓練
+    bst = lgb.train(params, dtrain)
 
-    # 初期重み
-    w_initial = np.random.rand(X_train.shape[1])
-
-    # 最適化
-    result = minimize(loss_function, w_initial, method='BFGS')
-
-    if result.success:
-        print("Optimized weights:", result.x)
-        print("Minimum loss:", result.fun)
-    else:
-        print("Optimization failed:", result.message)
-
-    # sとqの最適解の導出
-    w = result.x
-    scores = np.dot(X_test, w)
-    probabilities = softmax(scores)
-    tau_direct = probabilities * np.sum(np.exp(scores))
+    # テストデータセットに対する予測
+    tau_direct = bst.predict(X_test, num_iteration=bst.best_iteration)
 
     return tau_direct
 
-# 損失関数 L(s)
-def loss_function(w):
-    scores_1 = np.dot(X_train_1, w)
-    scores_0 = np.dot(X_train_0, w)
-    probabilities_1 = softmax(scores_1)
-    probabilities_0 = softmax(scores_0)
-    return -np.sum(y_train_1 * np.log(probabilities_1)) / N1 + np.sum(y_train_0 * np.log(probabilities_0)) / N0
+
 
 def get_tau_sl():
     # from sklearn.ensemble import RandomForestRegressor
@@ -138,3 +134,9 @@ def uplift(tau_sl, tau_xl, tau_direct):
     ax.set_title('Comparison of Uplift Models')
     ax.legend()
     plt.show()
+
+    # AUCの計算
+    from sklift.metrics import uplift_auc_score
+    print('SL Model:', uplift_auc_score(y_true=y_test, uplift=tau_sl, treatment=T_test))
+    print('XL Model:', uplift_auc_score(y_true=y_test, uplift=tau_xl, treatment=T_test))
+    print('Direct Model:', uplift_auc_score(y_true=y_test, uplift=tau_direct, treatment=T_test))
