@@ -34,8 +34,34 @@ def split_data(df, seed):
 
 X_train, X_test, T_train, T_test, y_r_train, y_r_test, y_c_train, y_c_test = split_data(df, seed)
 
-def custom_objective(y_pred: np.ndarray, train_data:lgb.Dataset):
-    y_r = 
+def custom_objective(y_pred: np.ndarray, train_data: lgb.Dataset):
+    y_r = y_r_train
+    y_c = y_c_train
+    t = T_train.values
+    treatment = (t == 1)
+    control = (t == 0)
+
+    N_1 = np.sum(treatment)
+    N_0 = np.sum(control)
+
+    p = 1 / (1 + np.exp(-y_pred))
+
+    grad = ((-1) ** t) * (y_r - y_c * p) / np.where(treatment, N_1, N_0)
+
+    hess = y_c * p * (1 - p) / np.where(treatment, N_1, N_0)
+
+    return grad, hess
+
+def get_roi_direct():
+    dtrain = lgb.Dataset(X_train, free_raw_data=False)
+
+    params = {
+        'objective': lambda y_pred, train_data: custom_objective(y_pred, train_data),
+        'verbose': -1,
+    }
+    bst = lgb.train(params, dtrain)
+    roi_direct = bst.predict(X_test, num_iteration=bst.best_iteration)
+    return roi_direct
     
 def get_roi_tpmsl():
     # 必要なライブラリのインポート
