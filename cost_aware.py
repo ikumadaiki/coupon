@@ -1,20 +1,18 @@
-# print('cost_aware.py')
+import init_data
 
+# 必要なライブラリのインポート
 import numpy as np
 from tqdm import tqdm
 import lightgbm as lgb
-
-import init_data
-df = init_data.get_data()
-
-# パラメータの設定
-seed = 42
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestRegressor
+from econml.metalearners import SLearner
+from sklearn.linear_model import LinearRegression
+from sklearn.preprocessing import MinMaxScaler
+from lightgbm import LGBMRegressor
 
 # データの分割
 def split_data(df, seed):
-    # 訓練データとテストデータに分割
-    from sklearn.model_selection import train_test_split
-
     X = df.drop(['treatment', 'exposure', 'visit', 'conversion'], axis=1)
     X = (X - X.mean()) / X.std()
     T = df['treatment']
@@ -32,9 +30,7 @@ def split_data(df, seed):
 
     return X_train, X_test, T_train, T_test, y_r_train, y_r_test, y_c_train, y_c_test
 
-X_train, X_test, T_train, T_test, y_r_train, y_r_test, y_c_train, y_c_test = split_data(df, seed)
-
-def custom_objective(y_pred: np.ndarray, train_data: lgb.Dataset):
+def custom_objective(y_pred: np.ndarray, train_data: lgb.Dataset, y_r_train, y_c_train, T_train):
     y_r = y_r_train
     y_c = y_c_train
     t = T_train.values
@@ -64,12 +60,6 @@ def get_roi_direct():
     return roi_direct
     
 def get_roi_tpmsl():
-    # 必要なライブラリのインポート
-    from sklearn.ensemble import RandomForestRegressor
-    from econml.metalearners import SLearner
-    from sklearn.linear_model import LinearRegression
-    from sklearn.preprocessing import MinMaxScaler
-    from lightgbm import LGBMRegressor
 
 
     # モデルの構築
@@ -113,3 +103,9 @@ def calculate_values(roi_scores):
         incremental_values[0] = 0
         
     return incremental_costs, incremental_values
+
+def main():
+    df = init_data.get_data()
+    # パラメータの設定
+    seed = 42
+    X_train, X_test, T_train, T_test, y_r_train, y_r_test, y_c_train, y_c_test = split_data(df, seed)
