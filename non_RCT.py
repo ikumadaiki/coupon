@@ -33,6 +33,14 @@ def generate_treatment(df, x_cols, seed=42):
     df.drop("target", axis=1, inplace=True)
     return df
 
+# T_Probを予測値に変更
+def predict_treatment(df, x_cols):
+    logistic_model = LogisticRegression(max_iter=1000)
+    logistic_model.fit(df[x_cols], df["T"])
+    df["T_prob"] = logistic_model.predict_proba(df[x_cols])[:, 1]
+    df["T_prob"] = df["T_prob"].clip(0.01, 0.99)
+    return df
+
 def generate_visit(df, x_cols, seed=42):
     np.random.seed(seed)
     interaction_effects = sigmoid(np.sum(df.iloc[:, :len(x_cols)], axis=1))
@@ -102,38 +110,61 @@ def create_custom_objective(y_r_, y_c_, T_train):
         return grad, hess
     return custom_objective
 
-def get_roi_direct(X_train, custom_objective, X_test):
-    dtrain = lgb.Dataset(X_train, free_raw_data=False)
+class BaseModel:
+    def __init__(self, X_train, y_r_train=None, y_c_train=None, T_train=None, X_test=None):
+        self.X_train = X_train
+        self.y_r_train = y_r_train
+        self.y_c_train = y_c_train
+        self.T_train = T_train
+        self.X_test = X_test
+        self.model = None
 
-    params = {
-        'objective': lambda y_pred, train_data: custom_objective(y_pred, train_data),
-        'verbose': -1,
-    }
-    bst = lgb.train(params, dtrain)
-    roi_direct = bst.predict(X_test, num_iteration=bst.best_iteration)
-    roi_direct = 1 / (1 + np.exp(-roi_direct))
-    return roi_direct
+    def fit(self):
+        raise NotImplementedError("Subclasses should implement this method.")
+    
+    def predict(self):
+        raise NotImplementedError("Subclasses should implement this method.")
+    
+class ROIDirectModel(BaseModel):
+    def __init__(self, X_train, X_test, custom_objective):
+        super().__init__(X_train=X_train, X_test=X_test)
+        self.custom_objective = custom_objective
 
-def get_roi_tpmsl(y_r_train, y_c_train, X_train, X_test, T_train):
-    # モデルの構築
-    models = LGBMRegressor()
-    # models = LinearRegression()
-    S_learner_r = SLearner(overall_model = models)
-    S_learner_r.fit(y_r_train, T_train, X = X_train)
+    def fit(self):
+        dtrain = lgb.Dataset(self.X_train, free_raw_data=False)
+        params = {
+            'objective': lambda y_pred, train_data: self.custom_objective(y_pred, train_data),
+            'verbose': -1,
+        }
+        self.model = lgb.train(params, dtrain)
 
-    S_learner_c = SLearner(overall_model = models)
-    S_learner_c.fit(y_c_train, T_train, X = X_train)
+    def predict(self):
+        roi_direct = self.model.predict(self.X_test, num_iteration=self.model.best_iteration)
+        roi_direct = 1 / (1 + np.exp(-roi_direct))
+        return roi_direct
 
-    # 効果の推定
-    tau_r = S_learner_r.effect(X_test)
-    tau_c = S_learner_c.effect(X_test)
-    roi_tpmsl = tau_r / tau_c
+class ROITPMSLModel(BaseModel):
+    def __init__(self, X_train, X_test, y_r_train, y_c_train, T_train):
+        super().__init__(X_train=X_train, y_r_train=y_r_train, y_c_train=y_c_train, T_train=T_train, X_test=X_test)
+        self.scaler = MinMaxScaler()
+        self.model_r = None
+        self.model_c = None
 
-    scaler = MinMaxScaler()
-    roi_tpmsl = scaler.fit_transform(roi_tpmsl.reshape(-1, 1)).flatten()
+    def fit(self):
+        models_r = LGBMRegressor()
+        self.model_r = SLearner(overall_model=models_r)
+        self.model_r.fit(self.y_r_train, self.T_train, X=self.X_train)
 
-    # roi_tpmsl = sigmoid(roi_tpmsl)
-    return roi_tpmsl
+        models_c = LGBMRegressor()
+        self.model_c = SLearner(overall_model=models_c)
+        self.model_c.fit(self.y_c_train, self.T_train, X=self.X_train)
+
+    def predict(self):
+        tau_r = self.model_r.effect(self.X_test)
+        tau_c = self.model_c.effect(self.X_test)
+        roi_tpmsl = tau_r / tau_c
+        roi_tpmsl = self.scaler.fit_transform(roi_tpmsl.reshape(-1, 1)).flatten()
+        return roi_tpmsl
 
 def calculate_values(roi_scores, T_test, y_r_test, y_c_test):
     sorted_indices = np.argsort(roi_scores)[::-1]
@@ -157,26 +188,37 @@ def calculate_values(roi_scores, T_test, y_r_test, y_c_test):
         
     return incremental_costs, incremental_values
 
-def plot_cost_curve(incremental_costs_direct_dr, incremental_values_direct_dr, incremental_costs_direct_ipw, incremental_values_direct_ipw, incremental_costs_direct_naive, incremental_values_direct_naive, incremental_costs_tpmsl, incremental_values_tpmsl):
+def plot_cost_curve(data_dict):
     plt.figure(figsize=(10, 6))
-    plt.plot(incremental_costs_direct_dr, incremental_values_direct_dr, label="DR")
-    plt.plot(incremental_costs_direct_ipw, incremental_values_direct_ipw, label="IPW")
-    plt.plot(incremental_costs_direct_naive, incremental_values_direct_naive, label="Naive")
-    plt.plot(incremental_costs_tpmsl, incremental_values_tpmsl, label="TPMSL")
+    
+    # 辞書をループして各データセットをプロット
+    for label, (costs, values) in data_dict.items():
+        plt.plot(costs / max(costs), values / max(values), label=label)
+    
+    # 基準線の追加
     plt.plot([0, 1], [0, 1], linestyle='--', color='gray')
+    
+    # グラフのタイトルと軸ラベルを設定
     plt.title('Cost Curve Comparison')
     plt.xlabel('Incremental Cost')
     plt.ylabel('Incremental Value')
+    
+    # 凡例とグリッドを表示
     plt.legend()
     plt.grid(True)
     plt.show()
 
-def main():    
+def main(predict_ps=True):    
     seed = 42
     n = 10_000_000
     p = 10
     df, x_cols = generate_data(n, p, seed)
     df = generate_treatment(df, x_cols, seed)
+    df["T_prob"].hist(alpha=0.3, bins=30)
+    if predict_ps:
+        df = predict_treatment(df, x_cols)
+        df["T_prob"].hist(alpha=0.3, bins=30)
+        return None
     df = generate_visit(df, x_cols)
     df = generate_conversion(df, x_cols)
     mu_r_0, mu_r_1, mu_c_0, mu_c_1 = predict_outcome(df, x_cols)
@@ -185,12 +227,27 @@ def main():
     custom_objective_dr = create_custom_objective(y_r_dr_train, y_c_dr_train, T_train)
     custom_objective_ipw = create_custom_objective(y_r_ipw_train, y_c_ipw_train, T_train)
     custom_objective_naive = create_custom_objective(y_r_train, y_c_train, T_train)
-    roi_direct_dr = get_roi_direct(X_train, custom_objective_dr, X_test)
-    roi_direct_ipw = get_roi_direct(X_train, custom_objective_ipw, X_test)
-    roi_direct_naive = get_roi_direct(X_train, custom_objective_naive, X_test)
-    roi_tpmsl = get_roi_tpmsl(y_r_train, y_c_train, X_train, X_test, T_train)
+    model_direct_dr = ROIDirectModel(X_train, X_test, custom_objective_dr)
+    model_direct_ipw = ROIDirectModel(X_train, X_test, custom_objective_ipw)
+    model_direct_naive = ROIDirectModel(X_train, X_test, custom_objective_naive)
+    model_tpmsl = ROITPMSLModel(X_train, X_test, y_r_train, y_c_train, T_train)
+    model_direct_dr.fit()
+    model_direct_ipw.fit()
+    model_direct_naive.fit()
+    model_tpmsl.fit()
+    roi_direct_dr = model_direct_dr.predict()
+    roi_direct_ipw = model_direct_ipw.predict()
+    roi_direct_naive = model_direct_naive.predict()
+    roi_tpmsl = model_tpmsl.predict()
     incremental_costs_direct_dr, incremental_values_direct_dr = calculate_values(roi_direct_dr, T_test, y_r_test, y_c_test)
     incremental_costs_direct_ipw, incremental_values_direct_ipw = calculate_values(roi_direct_ipw, T_test, y_r_test, y_c_test)
     incremental_costs_direct_naive, incremental_values_direct_naive = calculate_values(roi_direct_naive, T_test, y_r_test, y_c_test)
     incremental_costs_tpmsl, incremental_values_tpmsl = calculate_values(roi_tpmsl, T_test, y_r_test, y_c_test)
-    plot_cost_curve(incremental_costs_direct_dr, incremental_values_direct_dr, incremental_costs_direct_ipw, incremental_values_direct_ipw, incremental_costs_direct_naive, incremental_values_direct_naive, incremental_costs_tpmsl, incremental_values_tpmsl)
+    # データの準備
+    data_dict = {
+        "DR": (incremental_costs_direct_dr, incremental_values_direct_dr),
+        "IPW": (incremental_costs_direct_ipw, incremental_values_direct_ipw),
+        "Direct": (incremental_costs_direct_naive, incremental_values_direct_naive),
+        "TPMSL": (incremental_costs_tpmsl, incremental_values_tpmsl)
+    }
+    plot_cost_curve(data_dict)
