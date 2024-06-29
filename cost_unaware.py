@@ -11,13 +11,16 @@ from econml.metalearners import XLearner
 import matplotlib.pyplot as plt
 from sklift.viz import plot_uplift_curve
 
-# データの分割
-def split_data(df, seed):
+# 前処理
+def preprocess(df):
     X = df.drop(['treatment','exposure','visit','conversion'], axis=1)
     X = (X - X.mean()) / X.std()
     T = df['treatment']
     y = df['visit']
+    return X, T, y
 
+# データの分割
+def split_data(X, T, y, seed):
     X_train, X_test, T_train, T_test, y_train, y_test = train_test_split(
         X, T, y, train_size=0.7, random_state=seed, stratify=T
     )
@@ -57,42 +60,60 @@ def create_custom_objective(T_train):
         return grad, hess
     return custom_objective
 
-def get_tau_direct(X_train, y_train, X_test, custom_objective):
-    # データセットの作成
-    dtrain = lgb.Dataset(X_train, label=y_train)
-    # LightGBMのパラメータ
-    params = {
-        'objective': lambda y_pred, train_data: custom_objective(y_pred, train_data)
-        }
+class BaseModel:
+    def __init__(self, X_train, y_train, T_train=None, X_test=None, custom_objective=None):
+        self.X_train = X_train
+        self.y_train = y_train
+        self.T_train = T_train
+        self.X_test = X_test
+        self.custom_objective = custom_objective
+        self.model = None
 
-    # モデルの訓練
-    bst = lgb.train(params, dtrain)
+    def fit(self):
+        raise NotImplementedError("Subclasses should implement this method")
+    
+    def predict(self):
+        raise NotImplementedError("Subclasses should implement this method")
+    
+class TauDirectModel(BaseModel):
+    def fit(self):
+        # データセットの作成
+        dtrain = lgb.Dataset(self.X_train, label=self.y_train)
+        # LightGBMのパラメータ
+        params = {
+            'objective': lambda y_pred, train_data: self.custom_objective(y_pred, train_data)
+            }
 
-    # テストデータセットに対する予測
-    tau_direct = bst.predict(X_test, num_iteration=bst.best_iteration)
-
-    return tau_direct
-
-def get_tau_sl(y_train, T_train, X_train, X_test):
-    models = LGBMRegressor()
-    S_learner = SLearner(overall_model = models)
-    S_learner.fit(y_train, T_train, X = X_train)
-
-    # 効果の推定
-    tau_sl = S_learner.effect(X_test)
-
-    return tau_sl
-
-def get_tau_xl(y_train, T_train, X_train, X_test):
-    models = LGBMRegressor()
-    propensity_model = LogisticRegression()
-    X_learner = XLearner(models=models, propensity_model=propensity_model)
-    X_learner.fit(y_train, T_train, X = X_train)
-
-    # 効果の推定
-    tau_xl = X_learner.effect(X_test)
-
-    return tau_xl
+        # モデルの訓練
+        self.model = lgb.train(params, dtrain)
+    
+    def predict(self):
+        # テストデータセットに対する予測
+        tau_direct = self.model.predict(self.X_test, num_iteration=self.model.best_iteration)
+        return tau_direct
+    
+class TauSLModel(BaseModel):
+    def fit(self):
+        models = LGBMRegressor()
+        self.model = SLearner(overall_model = models)
+        self.model.fit(self.y_train, self.T_train, X = self.X_train)
+    
+    def predict(self):
+        # 効果の推定
+        tau_sl = self.model.effect(self.X_test)
+        return tau_sl
+    
+class TauXLModel(BaseModel):
+    def fit(self):
+        models = LGBMRegressor()
+        propensity_model = LogisticRegression()
+        self.model = XLearner(models=models, propensity_model=propensity_model)
+        self.model.fit(self.y_train, self.T_train, X = self.X_train)
+    
+    def predict(self):
+        # 効果の推定
+        tau_xl = self.model.effect(self.X_test)
+        return tau_xl
 
 def uplift(tau_sl, tau_xl, tau_direct, y_test, T_test):
 
@@ -124,11 +145,13 @@ def uplift(tau_sl, tau_xl, tau_direct, y_test, T_test):
 def main():
     df = init_data.get_data()
     seed = 42
-    X_train, X_test, T_train, T_test, y_train, y_test = split_data(df, seed)
-    tau_sl = get_tau_sl(y_train, T_train, X_train, X_test)
-    tau_xl = get_tau_xl(y_train, T_train, X_train, X_test)
-    custom_objective = create_custom_objective(T_train)
-    tau_direct = get_tau_direct(X_train, y_train, X_test, custom_objective)
-    uplift(tau_sl, tau_xl, tau_direct, y_test, T_test)
-
+    X, T, y = preprocess(df)
+    tau_list = []
+    X_train, X_test, T_train, T_test, y_train, y_test = split_data(X, T, y, seed)
+    for model in [TauSLModel, TauXLModel, TauDirectModel]:
+        model_instance = model(X_train, y_train, T_train, X_test, create_custom_objective(T_train))
+        model_instance.fit()
+        tau = model_instance.predict()
+        tau_list.append(tau)
+    uplift(*tau_list, y_test, T_test)
     
