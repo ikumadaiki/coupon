@@ -1,15 +1,11 @@
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
-from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 import lightgbm as lgb
 from lightgbm import LGBMRegressor
-from sklearn.ensemble import RandomForestRegressor
 from econml.metalearners import SLearner
-from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import MinMaxScaler
-from lightgbm import LGBMRegressor
 import matplotlib.pyplot as plt
 
 def sigmoid(x):
@@ -46,7 +42,8 @@ def generate_visit(df, x_cols, seed=42):
     interaction_effects = sigmoid(np.sum(df.iloc[:, :len(x_cols)], axis=1))
     baseline_effect = 0.3 + df['x_2'] * 0.4 + df["x_4"] * 0.1
     treatment_effect = df['T'] * (0.4 + interaction_effects)
-    prob_visit = np.clip(baseline_effect + treatment_effect, 0, 1)
+    noise = np.random.normal(0, 0.5)
+    prob_visit = np.clip(baseline_effect + treatment_effect + noise, 0, 1)
     df['visit'] = np.random.binomial(1, prob_visit)
     return df
 
@@ -55,7 +52,8 @@ def generate_conversion(df, x_cols, seed=42):
     interaction_effects_purchase = sigmoid(np.sum(df.iloc[:, :len(x_cols)], axis=1))
     baseline_effect_purchase = 0.1 + df['x_5'] * 0.3 + df["x_7"] * 0.3
     treatment_effect_purchase = df['T'] * (0.2 + interaction_effects_purchase)
-    prob_purchase = np.clip(baseline_effect_purchase + treatment_effect_purchase, 0, 1)
+    noise = np.random.normal(0, 0.5)
+    prob_purchase = np.clip(baseline_effect_purchase + treatment_effect_purchase + noise, 0, 1)
     df['purchase'] = np.where(df['visit'] == 1, np.random.binomial(1, prob_purchase), 0)
     return df
 
@@ -214,11 +212,10 @@ def main(predict_ps=True):
     p = 10
     df, x_cols = generate_data(n, p, seed)
     df = generate_treatment(df, x_cols, seed)
-    df["T_prob"].hist(alpha=0.3, bins=30)
+    # df["T_prob"].hist(alpha=0.3, bins=30)
     if predict_ps:
         df = predict_treatment(df, x_cols)
-        df["T_prob"].hist(alpha=0.3, bins=30)
-        return None
+        # df["T_prob"].hist(alpha=0.3, bins=30)
     df = generate_visit(df, x_cols)
     df = generate_conversion(df, x_cols)
     mu_r_0, mu_r_1, mu_c_0, mu_c_1 = predict_outcome(df, x_cols)
