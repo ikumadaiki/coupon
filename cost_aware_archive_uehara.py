@@ -12,6 +12,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
+import polars as pl
 
 def sigmoid(x):
     return 1 / (1 + np.exp(-x))
@@ -93,16 +94,63 @@ def split_data(X, T, y_r, y_c):
     return X_train, X_test, T_train, T_test, y_r_train, y_r_test, y_c_train, y_c_test
 
 class CustomDataset(Dataset):
-    def __init__(self, X: pd.DataFrame, y_r: pd.DataFrame, y_c: pd.DataFrame):
-        self.X = X.values.astype(np.float32)
-        self.y_r = y_r.values.astype(np.float32)
-        self.y_c = y_c.values.astype(np.float32)
+    def __init__(self, X_treated: pl.DataFrame, y_r_treated: pl.DataFrame, y_c_treated: pl.DataFrame, X_control: pl.DataFrame, y_r_control: pl.DataFrame, y_c_control: pl.DataFrame):
+        self.X_treated = X_treated.to_numpy(allow_copy=True)
+        self.y_r_treated = y_r_treated.to_numpy(allow_copy=True)
+        self.y_c_treated = y_c_treated.to_numpy(allow_copy=True)
+        self.X_control = X_control.to_numpy(allow_copy=True)
+        self.y_r_control = y_r_control.to_numpy(allow_copy=True)
+        self.y_c_control = y_c_control.to_numpy(allow_copy=True)
+
+        # teratment_idxからcontrol_idxをランダム二つ選択する辞書を作成
+        self.treatment_idx_to_control_idx = {}
+        # unused_control_idx = set(list(range(len(self.X_control))))
+        ununsed_control_idx = list(range(len(self.X_control)))
+        for i in range(len(self.X_treated)):
+            control_idx_i = np.random.choice(ununsed_control_idx, 2, replace=False)
+            self.treatment_idx_to_control_idx[i] = control_idx_i
+            # unused_control_idx -= set(control_idx_i)
+
     
     def __len__(self):
-        return len(self.X)
+        return len(self.X_treated)
     
     def __getitem__(self, idx):
-        return self.X[idx], self.y_r[idx], self.y_c[idx]
+        # treatmentのデータを取得
+        X_treated = self.X_treated[idx]
+        y_r_treated = self.y_r_treated[idx]
+        y_c_treated = self.y_c_treated[idx]
+
+        # controlのデータを取得
+        control_idx = self.treatment_idx_to_control_idx[idx]
+        X_control = self.X_control[control_idx]
+        y_r_control = self.y_r_control[control_idx]
+        y_c_control = self.y_c_control[control_idx]
+
+        return X_treated, y_r_treated, y_c_treated, X_control, y_r_control, y_c_control
+    
+
+class CustomCollator:
+    def __call__(self, batch):
+        # バッチを作成
+        X_treated = torch.tensor([x[0] for x in batch], dtype=torch.float32)
+        y_r_treated = torch.tensor([x[1] for x in batch], dtype=torch.float32)
+        y_c_treated = torch.tensor([x[2] for x in batch], dtype=torch.float32)
+
+        # controlは2つあるので、それぞれのデータを取得
+        X_control = torch.tensor([x[3] for x in batch], dtype=torch.float32)
+        y_r_control = torch.tensor([x[4] for x in batch], dtype=torch.float32)
+        y_c_control = torch.tensor([x[5] for x in batch], dtype=torch.float32)
+
+        # reshape
+        N, D = X_treated.shape
+        X_control = X_control.reshape(N * 2, D)
+        y_r_control = y_r_control.reshape(N * 2, 1)
+        y_c_control = y_c_control.reshape(N * 2, 1)
+
+        return X_treated, y_r_treated, y_c_treated, X_control, y_r_control, y_c_control
+
+
 
 def loader(X_train, T_train, y_r_train, y_c_train):
     # treatmentとcontrolのデータを分割
@@ -115,6 +163,15 @@ def loader(X_train, T_train, y_r_train, y_c_train):
     X_train_control = X_train[control_mask]
     y_r_train_control = y_r_train[control_mask]
     y_c_train_control = y_c_train[control_mask]
+
+    # polarsに変換
+    X_train_treated = pl.from_pandas(X_train_treated)
+    y_r_train_treated = pl.from_pandas(y_r_train_treated)
+    y_c_train_treated = pl.from_pandas(y_c_train_treated)
+
+    X_train_control = pl.from_pandas(X_train_control)
+    y_r_train_control = pl.from_pandas(y_r_train_control)
+    y_c_train_control = pl.from_pandas(y_c_train_control)
 
     # import pdb; pdb.set_trace()
 
@@ -141,14 +198,19 @@ def loader(X_train, T_train, y_r_train, y_c_train):
     # y_c_train_tensor_control = y_c_train_tensor[control_mask]
 
     # データをテンソルに変換してDatasetを作成
-    dataset_1 = CustomDataset(X_train_treated, y_r_train_treated, y_c_train_treated)
-    dataset_0 = CustomDataset(X_train_control, y_r_train_control, y_c_train_control)
+    import pdb; pdb.set_trace()
+    ds = CustomDataset(
+        X_train_treated, y_r_train_treated, y_c_train_treated,
+        X_train_control, y_r_train_control, y_c_train_control
+    )
+    collator = CustomCollator()
 
+    import pdb; pdb.set_trace()
     # DataLoaderの定義
-    loader_1 = DataLoader(dataset_1, batch_size=4, shuffle=True, drop_last=True)
-    loader_0 = DataLoader(dataset_0, batch_size=8, shuffle=True, drop_last=True)
+    dl = DataLoader(ds, batch_size=64, shuffle=True, collate_fn=collator)
+    
 
-    return loader_1, loader_0
+    return dl
 
 
 # 非線形モデルの定義
@@ -174,7 +236,7 @@ def custom_loss(y_r, y_c, q, group_size):
     loss = -torch.sum(y_r * logit_q + y_c * torch.log(1 - q)) / group_size
     return loss
 
-def get_loss(num_epochs, lr, X_train, loader_1, loader_0):
+def get_loss(num_epochs, lr, X_train, dl):
     model = NonLinearModel(X_train.shape[1])
     optimizer = optim.Adam(model.parameters(), lr=lr)
     loss_history = []
@@ -186,9 +248,9 @@ def get_loss(num_epochs, lr, X_train, loader_1, loader_0):
         count_batches = 0
 
         average_loss = 0
-        total = min(len(loader_1), len(loader_0))
+        total = len(dl)
         desc = f'Epoch {epoch} AVG Loss: {average_loss:.4f}'
-        for (x_1, y_r_1, y_c_1), (x_0, y_r_0, y_c_0) in tqdm(zip(loader_1, loader_0), total=total, desc=desc, leave=False):
+        for x_1, y_r_1, y_c_1, x_0, y_r_0, y_c_0 in tqdm(dl, total=total, desc=desc, leave=False):
             optimizer.zero_grad()
             q_1 = model(x_1)
             q_0 = model(x_0)
@@ -263,7 +325,7 @@ def calculate_values(roi_scores, T_test, y_r_test, y_c_test):
 
 def main(predict_treatment=False):
     seed = 42
-    n = 100000
+    n = 500000
     p = 10
     num_epochs = 50
     lr = 0.0005
@@ -279,9 +341,9 @@ def main(predict_treatment=False):
     y_r_, y_c_ = y_r_dr, y_c_dr
     X_train, X_test, T_train, T_test, y_r_train, y_r_test, y_c_train, y_c_test = split_data(X, T, y_r_, y_c_)
     print("=====================================")
-    loader_1, loader_0 = loader(X_train, T_train, y_r_train, y_c_train)
+    dl = loader(X_train, T_train, y_r_train, y_c_train)
     print("=====================================")
-    model, loss_history = get_loss(num_epochs, lr, X_train, loader_1, loader_0)
+    model, loss_history = get_loss(num_epochs, lr, X_train, dl)
     plot_loss(loss_history)
     roi_direct = get_roi(model, X_test)
     roi_tpmsl = get_roi_tpmsl(X_train, y_r_train, y_c_train, T_train, X_test)

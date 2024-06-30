@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import TensorDataset, DataLoader
 from tqdm import tqdm
 
 def sigmoid(x):
@@ -46,9 +46,9 @@ def generate_visit(df, x_cols, seed=42):
     np.random.seed(seed)
     interaction_effects = sigmoid(np.sum(df.iloc[:, :len(x_cols)], axis=1))
     baseline_effect = 0.3 + df['x_2'] * 0.4 + df["x_4"] * 0.1
-    treatment_effect = df['T'] * (0.3 + interaction_effects)
+    treatment_effect = df['T'] * (0.4 + interaction_effects)
     noise = np.random.normal(0, 0.5)
-    prob_visit = np.clip(baseline_effect + treatment_effect, 0, 1)
+    prob_visit = np.clip(baseline_effect + treatment_effect + noise, 0, 1)
     df['visit'] = np.random.binomial(1, prob_visit)
     return df
 
@@ -58,7 +58,7 @@ def generate_conversion(df, x_cols, seed=42):
     baseline_effect_purchase = 0.1 + df['x_5'] * 0.3 + df["x_7"] * 0.3
     treatment_effect_purchase = df['T'] * (0.2 + interaction_effects_purchase)
     noise = np.random.normal(0, 0.5)
-    prob_purchase = np.clip(baseline_effect_purchase + treatment_effect_purchase, 0, 1)
+    prob_purchase = np.clip(baseline_effect_purchase + treatment_effect_purchase + noise, 0, 1)
     df['purchase'] = np.where(df['visit'] == 1, np.random.binomial(1, prob_purchase), 0)
     return df
 
@@ -77,81 +77,40 @@ def preprocess_data(df, x_cols, mu_r_0, mu_r_1, mu_c_0, mu_c_1):
     df["y_c_ipw"] = np.where(df["T"]==1, df["visit"] / df["T_prob"], df["visit"] / (1 - df["T_prob"]))
     df["y_c_dr"] = np.where(T==1, (df["visit"] - mu_c_1.predict(X)) / df["T_prob"] + mu_c_1.predict(X), (df["visit"] - mu_c_0.predict(X)) / (1 - df["T_prob"]) + mu_c_0.predict(X))
     df["y_r_dr"] = np.where(T==1, (df["purchase"] - mu_r_1.predict(X)) / df["T_prob"] + mu_r_1.predict(X), (df["purchase"] - mu_r_0.predict(X)) / (1 - df["T_prob"]) + mu_r_0.predict(X))
-    y_r_ipw, y_c_ipw, y_r_dr, y_c_dr = df["y_r_ipw"], df["y_c_ipw"], df["y_r_dr"], df["y_c_dr"]
-    return df, X, T, y_r, y_c, y_r_ipw, y_c_ipw, y_r_dr, y_c_dr
+    return df, X, T, y_r, y_c
 
-def split_data(X, T, y_r, y_c):
-    X_train, X_test, T_train, T_test, y_r_train, y_r_test, y_c_train, y_c_test = train_test_split(
-        X, T, y_r, y_c, train_size=0.7, random_state=42, stratify=T
-    )
+def split_data(df, X, T, y_r, y_c):
+    X_train, X_test, T_train, T_test, y_r_train, y_r_test, y_c_train, y_c_test, y_r_dr_train, y_r_dr_test, y_c_dr_train, y_c_dr_test, y_r_ipw_train, y_r_ipw_test, y_c_ipw_train, y_c_ipw_test = train_test_split(
+        X, T, y_r, y_c, df["y_r_dr"], df["y_c_dr"], df["y_r_ipw"], df["y_c_ipw"], train_size=0.7, random_state=0, stratify=T
+        )
 
-    # インデックスをリセット
     T_test = T_test.reset_index(drop=True)
     y_r_test = y_r_test.reset_index(drop=True)
     y_c_test = y_c_test.reset_index(drop=True)
 
-    return X_train, X_test, T_train, T_test, y_r_train, y_r_test, y_c_train, y_c_test
+    return X_train, X_test, T_train, T_test, y_r_train, y_r_test, y_c_train, y_c_test, y_r_dr_train, y_r_dr_test, y_c_dr_train, y_c_dr_test, y_r_ipw_train, y_r_ipw_test, y_c_ipw_train, y_c_ipw_test
 
-class CustomDataset(Dataset):
-    def __init__(self, X: pd.DataFrame, y_r: pd.DataFrame, y_c: pd.DataFrame):
-        self.X = X.values.astype(np.float32)
-        self.y_r = y_r.values.astype(np.float32)
-        self.y_c = y_c.values.astype(np.float32)
-    
-    def __len__(self):
-        return len(self.X)
-    
-    def __getitem__(self, idx):
-        return self.X[idx], self.y_r[idx], self.y_c[idx]
-
-def loader(X_train, T_train, y_r_train, y_c_train):
-    # treatmentとcontrolのデータを分割
-    treatment_mask = T_train == 1
-    X_train_treated = X_train[treatment_mask]
-    y_r_train_treated = y_r_train[treatment_mask]
-    y_c_train_treated = y_c_train[treatment_mask]
-
-    control_mask = T_train == 0
-    X_train_control = X_train[control_mask]
-    y_r_train_control = y_r_train[control_mask]
-    y_c_train_control = y_c_train[control_mask]
-
-    # import pdb; pdb.set_trace()
-
-    # # データをテンソルに変換
-    # X_train_tensor_treated = torch.from_numpy(X_train_treated.values).float().clone()
-    # y_r_train_tensor_treated = torch.from_numpy(y_r_train_treated.values).float().clone()
-    # y_c_train_tensor_treated = torch.from_numpy(y_c_train_treated.values).float().clone()
-
-    # X_train_tensor_control = torch.from_numpy(X_train_control.values).float().clone()
-    # y_r_train_tensor_control = torch.from_numpy(y_r_train_control.values).float().clone()
-    # y_c_train_tensor_control = torch.from_numpy(y_c_train_control.values).float().clone()
-
-    # import pdb; pdb.set_trace()
-    # treatment_mask = T_train_tensor == 1
-    # import pdb; pdb.set_trace()
-    # X_train_tensor_treated = X_train_tensor[treatment_mask, :]
-    # y_r_train_tensor_treated = y_r_train_tensor[treatment_mask, :]
-    # y_c_train_tensor_treated = y_c_train_tensor[treatment_mask, :]
-
-    # import pdb; pdb.set_trace()
-    # control_mask = T_train_tensor == 0
-    # X_train_tensor_control = X_train_tensor[control_mask]
-    # y_r_train_tensor_control = y_r_train_tensor[control_mask]
-    # y_c_train_tensor_control = y_c_train_tensor[control_mask]
-
-    # データをテンソルに変換してDatasetを作成
-    dataset_1 = CustomDataset(X_train_treated, y_r_train_treated, y_c_train_treated)
-    dataset_0 = CustomDataset(X_train_control, y_r_train_control, y_c_train_control)
-
-    # DataLoaderの定義
-    loader_1 = DataLoader(dataset_1, batch_size=4, shuffle=True, drop_last=True)
-    loader_0 = DataLoader(dataset_0, batch_size=8, shuffle=True, drop_last=True)
-
+def import_loader(X_train, y_r_train, y_c_train, T_train):
+    # 条件に基づくインデックスを取得し、そのインデックスを用いてデータフレームからデータを抽出
+    X_train_1 = X_train[T_train == 1]
+    X_train_0 = X_train[T_train == 0]
+    y_r_1 = y_r_train[T_train == 1]
+    y_r_0 = y_r_train[T_train == 0]
+    y_c_1 = y_c_train[T_train == 1]
+    y_c_0 = y_c_train[T_train == 0]
+    # 抽出したデータから直接テンソルを生成
+    X_train_tensor_1 = torch.from_numpy(X_train_1.values.astype(np.float32))
+    X_train_tensor_0 = torch.from_numpy(X_train_0.values.astype(np.float32))
+    y_r_train_tensor_1 = torch.from_numpy(y_r_1.values.astype(np.float32))
+    y_r_train_tensor_0 = torch.from_numpy(y_r_0.values.astype(np.float32))
+    y_c_train_tensor_1 = torch.from_numpy(y_c_1.values.astype(np.float32))
+    y_c_train_tensor_0 = torch.from_numpy(y_c_0.values.astype(np.float32))
+    dataset_1 = TensorDataset(X_train_tensor_1, y_r_train_tensor_1, y_c_train_tensor_1)
+    dataset_0 = TensorDataset(X_train_tensor_0, y_r_train_tensor_0, y_c_train_tensor_0)
+    loader_1 = DataLoader(dataset_1, batch_size=128, shuffle=True)
+    loader_0 = DataLoader(dataset_0, batch_size=128, shuffle=True)
     return loader_1, loader_0
 
-
-# 非線形モデルの定義
 class NonLinearModel(nn.Module):
     def __init__(self, input_dim):
         super(NonLinearModel, self).__init__()
@@ -167,28 +126,23 @@ class NonLinearModel(nn.Module):
         x = torch.sigmoid(self.fc4(x))
         return x
 
-# 損失関数の定義
 def custom_loss(y_r, y_c, q, group_size):
-    q = torch.clamp(q, 1e-6, 1 - 1e-6)
+    q = torch.clamp(q, 1e-8, 1 - 1e-8)
     logit_q = torch.log(q / (1 - q))
     loss = -torch.sum(y_r * logit_q + y_c * torch.log(1 - q)) / group_size
     return loss
 
-def get_loss(num_epochs, lr, X_train, loader_1, loader_0):
+def get_loss(num_epochs, lr, loader_1, loader_0, X_train):
     model = NonLinearModel(X_train.shape[1])
     optimizer = optim.Adam(model.parameters(), lr=lr)
     loss_history = []
 
-    # 学習ループ
-    for epoch in tqdm(range(num_epochs), desc='Training'):
+    for epoch in range(num_epochs):
         model.train()
         total_loss = 0
         count_batches = 0
 
-        average_loss = 0
-        total = min(len(loader_1), len(loader_0))
-        desc = f'Epoch {epoch} AVG Loss: {average_loss:.4f}'
-        for (x_1, y_r_1, y_c_1), (x_0, y_r_0, y_c_0) in tqdm(zip(loader_1, loader_0), total=total, desc=desc, leave=False):
+        for (x_1, y_r_1, y_c_1), (x_0, y_r_0, y_c_0) in tqdm(zip(loader_1, loader_0)):
             optimizer.zero_grad()
             q_1 = model(x_1)
             q_0 = model(x_0)
@@ -202,9 +156,20 @@ def get_loss(num_epochs, lr, X_train, loader_1, loader_0):
 
         average_loss = total_loss / count_batches
         loss_history.append(average_loss)
+        if epoch % 10 == 0:
+            print(f'Epoch {epoch}, Average Loss: {average_loss}')
     return model, loss_history
 
-# 評価
+# 損失の推移の可視化
+def plot_loss(loss_history):
+    plt.figure(figsize=(10, 6))
+    plt.plot(loss_history)
+    plt.title('Loss Transition')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.grid(True)
+    plt.show()
+
 def get_roi(model, X_test):
     model.eval()
     with torch.no_grad():
@@ -212,14 +177,9 @@ def get_roi(model, X_test):
         roi_direct = q_test.numpy()
         roi_direct = roi_direct.reshape(1, -1)[0]
         return roi_direct
-    
-def plot_loss(loss_history):
-    plt.plot(loss_history)
-    plt.xlabel("Epoch")
-    plt.ylabel("Loss")
-    plt.show()
 
-def get_roi_tpmsl(X_train, y_r_train, y_c_train, T_train, X_test):
+def get_roi_tpmsl(X_train, X_test, y_r_train, y_c_train, T_train, y_r_test, y_c_test):
+    # モデルの構築
     models = LGBMRegressor()
     # models = LinearRegression()
     S_learner_r = SLearner(overall_model = models)
@@ -261,41 +221,65 @@ def calculate_values(roi_scores, T_test, y_r_test, y_c_test):
         
     return incremental_costs, incremental_values
 
-def main(predict_treatment=False):
-    seed = 42
-    n = 100000
-    p = 10
-    num_epochs = 50
-    lr = 0.0005
-    df, x_cols = generate_data(n, p, seed)
-    df = generate_treatment(df, x_cols, seed)
-    df = generate_visit(df, x_cols, seed)
-    df = generate_conversion(df, x_cols, seed)
-    if predict_treatment:
-        df = predict_treatment(df, x_cols)
-    mu_r_0, mu_r_1, mu_c_0, mu_c_1 = predict_outcome(df, x_cols)
-    df, X, T, y_r, y_c, y_r_ipw, y_c_ipw, y_r_dr, y_c_dr = preprocess_data(df, x_cols, mu_r_0, mu_r_1, mu_c_0, mu_c_1)
-    print("=====================================")
-    y_r_, y_c_ = y_r_dr, y_c_dr
-    X_train, X_test, T_train, T_test, y_r_train, y_r_test, y_c_train, y_c_test = split_data(X, T, y_r_, y_c_)
-    print("=====================================")
-    loader_1, loader_0 = loader(X_train, T_train, y_r_train, y_c_train)
-    print("=====================================")
-    model, loss_history = get_loss(num_epochs, lr, X_train, loader_1, loader_0)
-    plot_loss(loss_history)
-    roi_direct = get_roi(model, X_test)
-    roi_tpmsl = get_roi_tpmsl(X_train, y_r_train, y_c_train, T_train, X_test)
-    incremental_costs, incremental_values = calculate_values(roi_direct, T_test, y_r_test, y_c_test)
-    incremental_costs_tpmsl, incremental_values_tpmsl = calculate_values(roi_tpmsl, T_test, y_r_test, y_c_test)
-    plt.plot(incremental_costs / max(incremental_costs), incremental_values / max(incremental_values), label="Direct Method", marker="x")
-    plt.plot(incremental_costs_tpmsl / max(incremental_costs_tpmsl), incremental_values_tpmsl / max(incremental_values_tpmsl), label="TPMSL", marker="o")
-    # 対角線を描画
-    plt.plot([0, 1], [0, 1], linestyle="--", color="gray")
-    plt.xlabel("Incremental Costs")
-    plt.ylabel("Incremental Values")
+def plot_cost_curve(data_dict):
+    plt.figure(figsize=(10, 6))
+    
+    # 辞書をループして各データセットをプロット
+    for label, (costs, values) in data_dict.items():
+        plt.plot(costs / max(costs), values / max(values), label=label)
+    
+    # 基準線の追加
+    plt.plot([0, 1], [0, 1], linestyle='--', color='gray')
+    
+    # グラフのタイトルと軸ラベルを設定
+    plt.title('Cost Curve Comparison')
+    plt.xlabel('Incremental Cost')
+    plt.ylabel('Incremental Value')
+    
+    # 凡例とグリッドを表示
     plt.legend()
+    plt.grid(True)
     plt.show()
 
-
-if __name__ == '__main__':
-    main(predict_treatment=False)
+def main(predict_ps=True):
+    print("Predict PS:")
+    seed = 42
+    n = 10_000_000
+    p = 10
+    num_epochs = 50
+    lr = 0.001
+    df, x_cols = generate_data(n, p, seed)
+    df = generate_treatment(df, x_cols, seed)
+    df["T_prob"].hist(alpha=0.3, bins=30)
+    if predict_ps:
+        df = predict_treatment(df, x_cols)
+        # df["T_prob"].hist(alpha=0.3, bins=30)
+    df = generate_visit(df, x_cols)
+    df = generate_conversion(df, x_cols)
+    mu_r_0, mu_r_1, mu_c_0, mu_c_1 = predict_outcome(df, x_cols)
+    print("Predict Outcome:")
+    df, X, T, y_r, y_c = preprocess_data(df, x_cols, mu_r_0, mu_r_1, mu_c_0, mu_c_1)
+    print("Preprocess Data:")
+    X_train, X_test, T_train, T_test, y_r_train, y_r_test, y_c_train, y_c_test, y_r_dr_train, y_r_dr_test, y_c_dr_train, y_c_dr_test, y_r_ipw_train, y_r_ipw_test, y_c_ipw_train, y_c_ipw_test = split_data(df, x_cols, X, T, y_r, y_c)
+    print("Split Data:")
+    loader_1_dr, loader_0_dr = import_loader(X_train, y_r_dr_train, y_c_dr_train, T_train)
+    print("Import Loader:")
+    # loader_1_ipw, loader_0_ipw = import_loader(X_train, y_r_ipw_train, y_c_ipw_train, T_train)
+    # loader_1, loader_0 = import_loader(X_train, y_r_train, y_c_train, T_train)
+    model_dr, loss_history_dr = get_loss(num_epochs, lr, loader_1_dr, loader_0_dr, X_train)
+    # model_ipw, loss_history_ipw = get_loss(num_epochs, lr, loader_1_ipw, loader_0_ipw, X_train)
+    # model_naive, loss_history_naive = get_loss(num_epochs, lr, loader_1, loader_0, X_train)
+    plot_loss(loss_history_dr)
+    # plot_loss(loss_history_ipw)
+    # plot_loss(loss_history_naive)
+    roi_direct_dr = get_roi(model_dr, X_test)
+    # roi_direct_ipw = get_roi(model_ipw, X_test)
+    # roi_direct_naive = get_roi(model_naive, X_test)
+    roi_tpmsl = get_roi_tpmsl(X_train, X_test, y_r_train, y_c_train, T_train, y_r_test, y_c_test)
+    data_dict = {
+        'Direct DR': calculate_values(roi_direct_dr, T_test, y_r_test, y_c_test),
+        # 'Direct IPW': calculate_values(roi_direct_ipw, T_test, y_r_test, y_c_test),
+        # 'Direct Naive': calculate_values(roi_direct_naive, T_test, y_r_test, y_c_test),
+        'TPMSL': calculate_values(roi_tpmsl, T_test, y_r_test, y_c_test)
+    }
+    plot_cost_curve(data_dict)
