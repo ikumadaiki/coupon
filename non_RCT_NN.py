@@ -269,7 +269,7 @@ def get_loss(num_epochs, lr, X_train, dl, dl_val):
         # 検証データでの損失関数の計算
         model.eval()
         with torch.no_grad():
-            for x_1, y_r_1, y_c_1, x_0, y_r_0, y_c_0 in dl_val:
+            for x_1, y_r_1, y_c_1, x_0, y_r_0, y_c_0 in tqdm(dl_val, total=total, desc=desc, leave=False):
                 q_1 = model(x_1)
                 q_0 = model(x_0)
                 loss_1 = custom_loss(y_r_1, y_c_1, q_1, x_1.size(0))
@@ -356,10 +356,10 @@ def cost_curve(incremental_costs, incremental_values):
 def main(predict_treatment=False):
     seed = 42
     n = 100_000
-    p = 10
+    p = 8
     dic = {}
-    num_epochs = 50
-    lr = 0.0001
+    num_epochs = 30
+    lr = 0.00005
     dic = generate_data(n, p, dic, seed)
     dic = generate_treatment(dic, seed)
     dic = generate_visit(dic, seed)
