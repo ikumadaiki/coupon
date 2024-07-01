@@ -17,90 +17,82 @@ import polars as pl
 def sigmoid(x):
     return 1 / (1 + np.exp(-x))
 
-def generate_data(n, p, seed=42):
+def generate_data(n, p, dic, seed=42):
     np.random.seed(seed)
     features = np.random.normal(size=(n, p))
-    df = pd.DataFrame(features, columns=[f"x_{i}" for i in range(p)])
-    x_cols = df.columns.to_list()
-    return df, x_cols
+    dic["features"] = features
+    return dic
 
-def generate_treatment(df, x_cols, seed=42):
+def generate_treatment(dic, seed=42):
     np.random.seed(seed)
     logistic_model = LogisticRegression(max_iter=1000)
-    df["target"] = (np.dot(df[x_cols].values, np.random.uniform(0.1, 0.5, size=len(x_cols))) - 0.5 + np.random.normal(0, 0.5, size = len(df)) > 0).astype(int)
-    logistic_model.fit(df[x_cols], df["target"])
-    df["T_prob"] = logistic_model.predict_proba(df[x_cols])[:, 1]
-    df["T_prob"] = df["T_prob"].clip(0.01, 0.99)
-    df["T"] = np.random.binomial(1, df["T_prob"])
-    df.drop("target", axis=1, inplace=True)
-    return df
+    dic["target"] = (np.dot(dic["features"], np.random.uniform(0.1, 0.5, size=dic["features"].shape[1])) - 0.5 + np.random.normal(0, 0.5, size = len(dic["features"])) > 0).astype(int)
+    logistic_model.fit(dic["features"], dic["target"])
+    dic["T_prob"] = logistic_model.predict_proba(dic["features"])[:, 1]
+    dic["T_prob"] = dic["T_prob"].clip(0.01, 0.99)
+    dic["T"] = np.random.binomial(1, dic["T_prob"])
+    dic.pop("target")
+    return dic
 
 # T_Probを予測値に変更
-def predict_treatment(df, x_cols):
+def predict_treatment(dic):
     logistic_model = LogisticRegression(max_iter=1000)
-    logistic_model.fit(df[x_cols], df["T"])
-    df["T_prob"] = logistic_model.predict_proba(df[x_cols])[:, 1]
-    df["T_prob"] = df["T_prob"].clip(0.01, 0.99)
-    return df
+    logistic_model.fit(dic["features"], dic["T"])
+    dic["T_prob"] = logistic_model.predict_proba(dic["features"])[:, 1]
+    dic["T_prob"] = dic["T_prob"].clip(0.01, 0.99)
+    return dic
 
-def generate_visit(df, x_cols, seed=42):
+def generate_visit(dic, seed=42):
     np.random.seed(seed)
-    interaction_effects = sigmoid(np.sum(df.iloc[:, :len(x_cols)], axis=1))
-    baseline_effect = 0.3 + df['x_2'] * 0.4 + df["x_4"] * 0.1
-    treatment_effect = df['T'] * (0.3 + interaction_effects)
+    interaction_effects = sigmoid(np.sum(dic["features"], axis=1))
+    baseline_effect = 0.3 + dic["features"][:, 2] * 0.4 + dic["features"][:, 4] * 0.1
+    treatment_effect = dic["T"] * (0.3 + interaction_effects)
     noise = np.random.normal(0, 0.5)
     prob_visit = np.clip(baseline_effect + treatment_effect, 0, 1)
-    df['visit'] = np.random.binomial(1, prob_visit)
-    return df
+    dic["visit"] = np.random.binomial(1, prob_visit)
+    return dic
 
-def generate_conversion(df, x_cols, seed=42):
+def generate_conversion(dic, seed=42):
     np.random.seed(seed)
-    interaction_effects_purchase = sigmoid(np.sum(df.iloc[:, :len(x_cols)], axis=1))
-    baseline_effect_purchase = 0.1 + df['x_5'] * 0.3 + df["x_7"] * 0.3
-    treatment_effect_purchase = df['T'] * (0.2 + interaction_effects_purchase)
+    interaction_effects_purchase = sigmoid(np.sum(dic["features"], axis=1))
+    baseline_effect_purchase = 0.1 + dic["features"][:, 5] * 0.3 + dic["features"][:, 7] * 0.3
+    treatment_effect_purchase = dic["T"] * (0.2 + interaction_effects_purchase)
     noise = np.random.normal(0, 0.5)
     prob_purchase = np.clip(baseline_effect_purchase + treatment_effect_purchase, 0, 1)
-    df['purchase'] = np.where(df['visit'] == 1, np.random.binomial(1, prob_purchase), 0)
-    return df
+    dic["purchase"] = np.where(dic["visit"] == 1, np.random.binomial(1, prob_purchase), 0)
+    return dic
 
-def predict_outcome(df, x_cols):
-    df_t0 = df[df["T"]==0]
-    df_t1 = df[df["T"]==1]
-    mu_r_0 = LGBMRegressor(verbose=-1).fit(df_t0[x_cols], df_t0["purchase"])
-    mu_r_1 = LGBMRegressor(verbose=-1).fit(df_t1[x_cols], df_t1["purchase"])
-    mu_c_0 = LGBMRegressor(verbose=-1).fit(df_t0[x_cols], df_t0["visit"])
-    mu_c_1 = LGBMRegressor(verbose=-1).fit(df_t1[x_cols], df_t1["visit"])
+def predict_outcome(dic):
+    dic_t0 = {k: v[dic["T"]==0] for k, v in dic.items()}
+    dic_t1 = {k: v[dic["T"]==1] for k, v in dic.items()}
+    mu_r_0 = LGBMRegressor(verbose=-1).fit(dic_t0["features"], dic_t0["purchase"])
+    mu_r_1 = LGBMRegressor(verbose=-1).fit(dic_t1["features"], dic_t1["purchase"])
+    mu_c_0 = LGBMRegressor(verbose=-1).fit(dic_t0["features"], dic_t0["visit"])
+    mu_c_1 = LGBMRegressor(verbose=-1).fit(dic_t1["features"], dic_t1["visit"])
     return mu_r_0, mu_r_1, mu_c_0, mu_c_1
 
-def preprocess_data(df, x_cols, mu_r_0, mu_r_1, mu_c_0, mu_c_1):
-    X, T, y_r, y_c = df[x_cols], df["T"], df["purchase"], df["visit"]
-    df["y_r_ipw"] = np.where(df["T"]==1, df["purchase"] / df["T_prob"], df["purchase"] / (1 - df["T_prob"]))
-    df["y_c_ipw"] = np.where(df["T"]==1, df["visit"] / df["T_prob"], df["visit"] / (1 - df["T_prob"]))
-    df["y_c_dr"] = np.where(T==1, (df["visit"] - mu_c_1.predict(X)) / df["T_prob"] + mu_c_1.predict(X), (df["visit"] - mu_c_0.predict(X)) / (1 - df["T_prob"]) + mu_c_0.predict(X))
-    df["y_r_dr"] = np.where(T==1, (df["purchase"] - mu_r_1.predict(X)) / df["T_prob"] + mu_r_1.predict(X), (df["purchase"] - mu_r_0.predict(X)) / (1 - df["T_prob"]) + mu_r_0.predict(X))
-    y_r_ipw, y_c_ipw, y_r_dr, y_c_dr = df["y_r_ipw"], df["y_c_ipw"], df["y_r_dr"], df["y_c_dr"]
-    return df, X, T, y_r, y_c, y_r_ipw, y_c_ipw, y_r_dr, y_c_dr
+def preprocess_data(dic, mu_r_0, mu_r_1, mu_c_0, mu_c_1):
+    X, T, y_r, y_c = dic["features"], dic["T"], dic["purchase"], dic["visit"]
+    dic["y_r_ipw"] = np.where(T==1, dic["purchase"] / dic["T_prob"], dic["purchase"] / (1 - dic["T_prob"]))
+    dic["y_c_ipw"] = np.where(T==1, dic["visit"] / dic["T_prob"], dic["visit"] / (1 - dic["T_prob"]))
+    dic["y_r_dr"] = np.where(T==1, (dic["purchase"] - mu_r_1.predict(X)) / dic["T_prob"] + mu_r_1.predict(X), (dic["purchase"] - mu_r_0.predict(X)) / (1 - dic["T_prob"]) + mu_r_0.predict(X))
+    dic["y_c_dr"] = np.where(T==1, (dic["visit"] - mu_c_1.predict(X)) / dic["T_prob"] + mu_c_1.predict(X), (dic["visit"] - mu_c_0.predict(X)) / (1 - dic["T_prob"]) + mu_c_0.predict(X))
+    return dic
 
-def split_data(X, T, y_r, y_c):
-    X_train, X_test, T_train, T_test, y_r_train, y_r_test, y_c_train, y_c_test = train_test_split(
-        X, T, y_r, y_c, train_size=0.7, random_state=42, stratify=T
+def split_data(dic, seed):
+    X_train, X_test, T_train, T_test, y_r_train, y_r_test, y_c_train, y_c_test, y_r_ipw_train, y_r_ipw_test, y_c_ipw_train, y_c_ipw_test, y_r_dr_train, y_r_dr_test, y_c_dr_train, y_c_dr_test = train_test_split(
+        dic["features"], dic["T"], dic["purchase"], dic["visit"], dic["y_r_ipw"], dic["y_c_ipw"], dic["y_r_dr"], dic["y_c_dr"], train_size=0.7, random_state=seed, stratify=dic["T"]
     )
-
-    # インデックスをリセット
-    T_test = T_test.reset_index(drop=True)
-    y_r_test = y_r_test.reset_index(drop=True)
-    y_c_test = y_c_test.reset_index(drop=True)
-
-    return X_train, X_test, T_train, T_test, y_r_train, y_r_test, y_c_train, y_c_test
+    return X_train, X_test, T_train, T_test, y_r_train, y_r_test, y_c_train, y_c_test, y_r_ipw_train, y_c_ipw_train, y_r_dr_train, y_c_dr_train
 
 class CustomDataset(Dataset):
-    def __init__(self, X_treated: pl.DataFrame, y_r_treated: pl.DataFrame, y_c_treated: pl.DataFrame, X_control: pl.DataFrame, y_r_control: pl.DataFrame, y_c_control: pl.DataFrame):
-        self.X_treated = X_treated.to_numpy(allow_copy=True)
-        self.y_r_treated = y_r_treated.to_numpy(allow_copy=True)
-        self.y_c_treated = y_c_treated.to_numpy(allow_copy=True)
-        self.X_control = X_control.to_numpy(allow_copy=True)
-        self.y_r_control = y_r_control.to_numpy(allow_copy=True)
-        self.y_c_control = y_c_control.to_numpy(allow_copy=True)
+    def __init__(self, X_treated, y_r_treated, y_c_treated, X_control, y_r_control, y_c_control):
+        self.X_treated = X_treated
+        self.y_r_treated = y_r_treated
+        self.y_c_treated = y_c_treated
+        self.X_control = X_control
+        self.y_r_control = y_r_control
+        self.y_c_control = y_c_control
 
         # teratment_idxからcontrol_idxをランダム二つ選択する辞書を作成
         self.treatment_idx_to_control_idx = {}
@@ -325,21 +317,20 @@ def calculate_values(roi_scores, T_test, y_r_test, y_c_test):
 
 def main(predict_treatment=False):
     seed = 42
-    n = 500000
+    n = 10000
     p = 10
+    dic = {}
     num_epochs = 50
     lr = 0.0005
-    df, x_cols = generate_data(n, p, seed)
-    df = generate_treatment(df, x_cols, seed)
-    df = generate_visit(df, x_cols, seed)
-    df = generate_conversion(df, x_cols, seed)
+    dic = generate_data(n, p, dic, seed)
+    dic = generate_treatment(dic, seed)
+    dic = generate_visit(dic, seed)
+    dic = generate_conversion(dic, seed)
     if predict_treatment:
-        df = predict_treatment(df, x_cols)
-    mu_r_0, mu_r_1, mu_c_0, mu_c_1 = predict_outcome(df, x_cols)
-    df, X, T, y_r, y_c, y_r_ipw, y_c_ipw, y_r_dr, y_c_dr = preprocess_data(df, x_cols, mu_r_0, mu_r_1, mu_c_0, mu_c_1)
-    print("=====================================")
-    y_r_, y_c_ = y_r_dr, y_c_dr
-    X_train, X_test, T_train, T_test, y_r_train, y_r_test, y_c_train, y_c_test = split_data(X, T, y_r_, y_c_)
+        dic = predict_treatment(dic)
+    mu_r_0, mu_r_1, mu_c_0, mu_c_1 = predict_outcome(dic)
+    dic = preprocess_data(dic, mu_r_0, mu_r_1, mu_c_0, mu_c_1)
+    X_train, X_test, T_train, T_test, y_r_train, y_r_test, y_c_train, y_c_test, y_r_ipw_train, y_c_ipw_train, y_r_dr_train, y_c_dr_train = split_data(dic, seed)
     print("=====================================")
     dl = loader(X_train, T_train, y_r_train, y_c_train)
     print("=====================================")
