@@ -1,8 +1,6 @@
 import numpy as np
-import pandas as pd
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
-import lightgbm as lgb
 from lightgbm import LGBMRegressor
 from econml.metalearners import SLearner
 from sklearn.preprocessing import MinMaxScaler
@@ -12,18 +10,21 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
-import polars as pl
+from torch.optim import lr_scheduler
+
+# NNのランダム性を固定
+torch.manual_seed(42)
 
 def sigmoid(x):
     return 1 / (1 + np.exp(-x))
 
-def generate_data(n, p, dic, seed=42):
+def generate_data(n, p, dic, seed):
     np.random.seed(seed)
-    features = np.random.normal(size=(n, p))
+    features = np.random.normal(size=(n, p)) # 正規分布に従う特徴量を生成
     dic["features"] = features
     return dic
 
-def generate_treatment(dic, seed=42):
+def generate_treatment(dic, seed):
     np.random.seed(seed)
     logistic_model = LogisticRegression(max_iter=1000)
     dic["target"] = (np.dot(dic["features"], np.random.uniform(0.1, 0.5, size=dic["features"].shape[1])) - 0.5 + np.random.normal(0, 0.5, size = len(dic["features"])) > 0).astype(int)
@@ -32,7 +33,8 @@ def generate_treatment(dic, seed=42):
     dic["T_prob"] = dic["T_prob"].clip(0.01, 0.99)
     dic["T"] = np.random.binomial(1, dic["T_prob"])
     dic.pop("target")
-    import pdb; pdb.set_trace()
+    # plt.hist(dic["T_prob"], bins=30)
+    # plt.show()
     return dic
 
 # T_Probを予測値に変更
@@ -43,23 +45,23 @@ def predict_treatment(dic):
     dic["T_prob"] = dic["T_prob"].clip(0.01, 0.99)
     return dic
 
-def generate_visit(dic, seed=42):
+def generate_visit(dic, seed):
     np.random.seed(seed)
     interaction_effects = sigmoid(np.sum(dic["features"], axis=1))
     baseline_effect = 0.3 + dic["features"][:, 2] * 0.4 + dic["features"][:, 4] * 0.1
-    treatment_effect = dic["T"] * (0.3 + interaction_effects)
-    noise = np.random.normal(0, 0.5)
-    prob_visit = np.clip(baseline_effect + treatment_effect + noise, 0, 1)
+    noise = np.random.normal(0, 1, size=len(dic["features"]))
+    treatment_effect = dic["T"] * (0.2 + interaction_effects + noise)
+    prob_visit = np.clip(baseline_effect + treatment_effect, 0.05, 0.95)
     dic["visit"] = np.random.binomial(1, prob_visit)
     return dic
 
-def generate_conversion(dic, seed=42):
+def generate_conversion(dic, seed):
     np.random.seed(seed)
     interaction_effects_purchase = sigmoid(np.sum(dic["features"], axis=1))
     baseline_effect_purchase = 0.1 + dic["features"][:, 5] * 0.3 + dic["features"][:, 7] * 0.3
-    treatment_effect_purchase = dic["T"] * (0.2 + interaction_effects_purchase)
-    noise = np.random.normal(0, 0.5)
-    prob_purchase = np.clip(baseline_effect_purchase + treatment_effect_purchase + noise, 0, 1)
+    noise = np.random.normal(0, 1, size=len(dic["features"]))
+    treatment_effect_purchase = dic["T"] * (0.1 + interaction_effects_purchase + noise)
+    prob_purchase = np.clip(baseline_effect_purchase + treatment_effect_purchase, 0.05, 0.95)
     dic["purchase"] = np.where(dic["visit"] == 1, np.random.binomial(1, prob_purchase), 0)
     return dic
 
@@ -82,15 +84,16 @@ def preprocess_data(dic, mu_r_0, mu_r_1, mu_c_0, mu_c_1):
 
 def split_data(dic, seed):
     X_train_val, X_test, T_train_val, T_test, y_r_train_val, y_r_test, y_c_train_val, y_c_test, y_r_ipw_train_val, y_r_ipw_test, y_c_ipw_train_val, y_c_ipw_test, y_r_dr_train_val, y_r_dr_test, y_c_dr_train_val, y_c_dr_test = train_test_split(
-        dic["features"], dic["T"], dic["purchase"], dic["visit"], dic["y_r_ipw"], dic["y_c_ipw"], dic["y_r_dr"], dic["y_c_dr"], train_size=0.8, random_state=seed, stratify=dic["T"]
+        dic["features"], dic["T"], dic["purchase"], dic["visit"], dic["y_r_ipw"], dic["y_c_ipw"], dic["y_r_dr"], dic["y_c_dr"], train_size=0.8, random_state=0, stratify=dic["T"]
     )
     X_train, X_val, T_train, T_val, y_r_train, y_r_val, y_c_train, y_c_val, y_r_ipw_train, y_r_ipw_val,  y_c_ipw_train, y_c_ipw_val, y_r_dr_train, y_r_dr_val, y_c_dr_train, y_c_dr_val = train_test_split(
-        X_train_val, T_train_val, y_r_train_val, y_c_train_val, y_r_ipw_train_val, y_c_ipw_train_val, y_r_dr_train_val, y_c_dr_train_val, train_size=0.75, random_state=seed, stratify=T_train_val
+        X_train_val, T_train_val, y_r_train_val, y_c_train_val, y_r_ipw_train_val, y_c_ipw_train_val, y_r_dr_train_val, y_c_dr_train_val, train_size=0.75, random_state=0, stratify=T_train_val
     )
-    return X_train, X_val, X_test, T_train, T_val, T_test, y_r_train, y_r_val, y_r_test, y_c_train, y_c_val, y_c_test, y_r_ipw_train, y_c_ipw_train, y_r_dr_train, y_c_dr_train
+    return X_train, X_val, X_test, T_train, T_val, T_test, y_r_train, y_r_val, y_r_test, y_c_train, y_c_val, y_c_test, y_r_ipw_train, y_r_ipw_val, y_c_ipw_train, y_c_ipw_val, y_r_dr_train, y_r_dr_val, y_c_dr_train, y_c_dr_val
 
 class CustomDataset(Dataset):
-    def __init__(self, X_treated, y_r_treated, y_c_treated, X_control, y_r_control, y_c_control):
+    def __init__(self, X_treated, y_r_treated, y_c_treated, X_control, y_r_control, y_c_control, seed):
+        np.random.seed(seed)
         self.X_treated = X_treated
         self.y_r_treated = y_r_treated
         self.y_c_treated = y_c_treated
@@ -103,11 +106,10 @@ class CustomDataset(Dataset):
         # unused_control_idx = set(list(range(len(self.X_control))))
         ununsed_control_idx = list(range(len(self.X_control)))
         for i in range(len(self.X_treated)):
-            control_idx_i = np.random.choice(ununsed_control_idx, 2, replace=False)
+            control_idx_i = np.random.choice(ununsed_control_idx, round(len(X_control) / len(X_treated)), replace=False)
             self.treatment_idx_to_control_idx[i] = control_idx_i
             # unused_control_idx -= set(control_idx_i)
 
-    
     def __len__(self):
         return len(self.X_treated)
     
@@ -146,9 +148,7 @@ class CustomCollator:
 
         return X_treated, y_r_treated, y_c_treated, X_control, y_r_control, y_c_control
 
-
-
-def loader(X_train, T_train, y_r_train, y_c_train, X_val, T_val, y_r_val, y_c_val):
+def loader(X_train, T_train, y_r_train, y_c_train, X_val, T_val, y_r_val, y_c_val, seed):
     # treatmentとcontrolのデータを分割
     treatment_mask = T_train == 1
     X_train_treated = X_train[treatment_mask]
@@ -170,33 +170,11 @@ def loader(X_train, T_train, y_r_train, y_c_train, X_val, T_val, y_r_val, y_c_va
     y_r_val_control = y_r_val[control_mask_val]
     y_c_val_control = y_c_val[control_mask_val]
 
-    # # データをテンソルに変換
-    # X_train_tensor_treated = torch.from_numpy(X_train_treated.values).float().clone()
-    # y_r_train_tensor_treated = torch.from_numpy(y_r_train_treated.values).float().clone()
-    # y_c_train_tensor_treated = torch.from_numpy(y_c_train_treated.values).float().clone()
-
-    # X_train_tensor_control = torch.from_numpy(X_train_control.values).float().clone()
-    # y_r_train_tensor_control = torch.from_numpy(y_r_train_control.values).float().clone()
-    # y_c_train_tensor_control = torch.from_numpy(y_c_train_control.values).float().clone()
-
-    # import pdb; pdb.set_trace()
-    # treatment_mask = T_train_tensor == 1
-    # import pdb; pdb.set_trace()
-    # X_train_tensor_treated = X_train_tensor[treatment_mask, :]
-    # y_r_train_tensor_treated = y_r_train_tensor[treatment_mask, :]
-    # y_c_train_tensor_treated = y_c_train_tensor[treatment_mask, :]
-
-    # import pdb; pdb.set_trace()
-    # control_mask = T_train_tensor == 0
-    # X_train_tensor_control = X_train_tensor[control_mask]
-    # y_r_train_tensor_control = y_r_train_tensor[control_mask]
-    # y_c_train_tensor_control = y_c_train_tensor[control_mask]
-
     # データをテンソルに変換してDatasetを作成
     import pdb; pdb.set_trace()
     ds = CustomDataset(
         X_train_treated, y_r_train_treated, y_c_train_treated,
-        X_train_control, y_r_train_control, y_c_train_control
+        X_train_control, y_r_train_control, y_c_train_control, seed
     )
     collator = CustomCollator()
 
@@ -206,7 +184,7 @@ def loader(X_train, T_train, y_r_train, y_c_train, X_val, T_val, y_r_val, y_c_va
 
     ds_val = CustomDataset(
         X_val_treated, y_r_val_treated, y_c_val_treated,
-        X_val_control, y_r_val_control, y_c_val_control
+        X_val_control, y_r_val_control, y_c_val_control, seed
     )
     collator_val = CustomCollator()
     dl_val = DataLoader(ds_val, batch_size=128, shuffle=True, collate_fn=collator_val)
@@ -218,10 +196,10 @@ def loader(X_train, T_train, y_r_train, y_c_train, X_val, T_val, y_r_val, y_c_va
 class NonLinearModel(nn.Module):
     def __init__(self, input_dim):
         super(NonLinearModel, self).__init__()
-        self.fc1 = nn.Linear(input_dim, 20)
-        self.fc2 = nn.Linear(20, 10)
-        self.fc3 = nn.Linear(10, 5)
-        self.fc4 = nn.Linear(5, 1)
+        self.fc1 = nn.Linear(input_dim, 2 * input_dim)
+        self.fc2 = nn.Linear(2 * input_dim, input_dim)
+        self.fc3 = nn.Linear(input_dim, int(0.5 * input_dim))
+        self.fc4 = nn.Linear(int(0.5 * input_dim), 1)
     
     def forward(self, x):
         x = torch.relu(self.fc1(x))
@@ -241,6 +219,7 @@ def get_loss(num_epochs, lr, X_train, dl, dl_val):
     model = NonLinearModel(X_train.shape[1])
     optimizer = optim.Adam(model.parameters(), lr=lr)
     loss_history, loss_history_val = [], []
+    lambda_scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda epoch: 0.995 ** epoch)
 
     # 学習ループ
     for epoch in tqdm(range(num_epochs), desc='Training'):
@@ -265,6 +244,7 @@ def get_loss(num_epochs, lr, X_train, dl, dl_val):
 
         average_loss = total_loss / count_batches
         loss_history.append(average_loss)
+        lambda_scheduler.step()
 
         # 検証データでの損失関数の計算
         model.eval()
@@ -358,18 +338,18 @@ def main(predict_treatment=False):
     n = 100_000
     p = 8
     dic = {}
-    num_epochs = 30
-    lr = 0.00005
+    num_epochs = 80
+    lr = 0.0001
     dic = generate_data(n, p, dic, seed)
     dic = generate_treatment(dic, seed)
-    dic = generate_visit(dic, seed)
-    dic = generate_conversion(dic, seed)
     if predict_treatment:
         dic = predict_treatment(dic)
+    dic = generate_visit(dic, seed)
+    dic = generate_conversion(dic, seed)
     mu_r_0, mu_r_1, mu_c_0, mu_c_1 = predict_outcome(dic)
     dic = preprocess_data(dic, mu_r_0, mu_r_1, mu_c_0, mu_c_1)
-    X_train, X_val, X_test, T_train, T_val, T_test, y_r_train, y_r_val, y_r_test, y_c_train, y_c_val, y_c_test, y_r_ipw_train, y_c_ipw_train, y_r_dr_train, y_c_dr_train = split_data(dic, seed)
-    dl, dl_val = loader(X_train, T_train, y_r_dr_train, y_c_dr_train, X_val, T_val, y_r_val, y_c_val)
+    X_train, X_val, X_test, T_train, T_val, T_test, y_r_train, y_r_val, y_r_test, y_c_train, y_c_val, y_c_test, y_r_ipw_train, y_r_ipw_val, y_c_ipw_train, y_c_ipw_val, y_r_dr_train, y_r_dr_val, y_c_dr_train, y_c_dr_val = split_data(dic, seed)
+    dl, dl_val = loader(X_train, T_train, y_r_dr_train, y_c_dr_train, X_val, T_val, y_r_dr_val, y_c_dr_val, seed)
     model, loss_history, loss_history_val = get_loss(num_epochs, lr, X_train, dl, dl_val)
     plot_loss(loss_history, loss_history_val)
     roi_direct = get_roi(model, X_test)
