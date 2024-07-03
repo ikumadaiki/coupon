@@ -47,18 +47,18 @@ def predict_treatment(dic):
 
 def generate_visit(dic, seed):
     np.random.seed(seed)
-    noise = np.random.normal(0, 0.8, size=3*len(dic["features"]))
+    noise = np.random.normal(0, 1, size=3*len(dic["features"]))
     interaction_effects = sigmoid(np.sum(dic["features"], axis=1))
     baseline_effect = 0.3 + dic["features"][:, 2] * 0.3 + dic["features"][:, 4] * 0.1 + noise[0:len(dic["features"])]
     treatment_effect = dic["T"] * (0.2 + interaction_effects + noise[len(dic["features"]):2*len(dic["features"])])
     treatment_effect = np.clip(treatment_effect, 0.01, 100)  
-    prob_visit = np.clip(baseline_effect + treatment_effect + noise[2*len(dic["features"]):3*len((dic["features"]))], 0.10, 0.90)
+    prob_visit = np.clip(baseline_effect + treatment_effect + noise[2*len(dic["features"]):3*len((dic["features"]))], 0.05, 0.95)
     dic["visit"] = np.random.binomial(1, prob_visit)
     return dic
 
 def generate_conversion(dic, seed):
     np.random.seed(seed)
-    noise = np.random.normal(0, 0.8, size=3*len(dic["features"]))
+    noise = np.random.normal(0, 1, size=3*len(dic["features"]))
     interaction_effects_purchase = sigmoid(np.sum(dic["features"], axis=1))
     baseline_effect_purchase = 0.1 + dic["features"][:, 5] * 0.2 + dic["features"][:, 7] * 0.2 + noise[0:len(dic["features"])]
     treatment_effect_purchase = dic["T"] * (0.1 + interaction_effects_purchase + noise[len(dic["features"]):2*len(dic["features"])])
