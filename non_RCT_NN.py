@@ -47,23 +47,23 @@ def predict_treatment(dic):
 
 def generate_visit(dic, seed):
     np.random.seed(seed)
-    noise = np.random.normal(0, 0.5, size=3*len(dic["features"]))
+    noise = np.random.normal(0, 0.8, size=3*len(dic["features"]))
     interaction_effects = sigmoid(np.sum(dic["features"], axis=1))
     baseline_effect = 0.3 + dic["features"][:, 2] * 0.3 + dic["features"][:, 4] * 0.1 + noise[0:len(dic["features"])]
     treatment_effect = dic["T"] * (0.2 + interaction_effects + noise[len(dic["features"]):2*len(dic["features"])])
     treatment_effect = np.clip(treatment_effect, 0.01, 100)  
-    prob_visit = np.clip(baseline_effect + treatment_effect + noise[2*len(dic["features"]):3*len((dic["features"]))], 0.1, 0.9)
+    prob_visit = np.clip(baseline_effect + treatment_effect + noise[2*len(dic["features"]):3*len((dic["features"]))], 0.10, 0.90)
     dic["visit"] = np.random.binomial(1, prob_visit)
     return dic
 
 def generate_conversion(dic, seed):
     np.random.seed(seed)
-    noise = np.random.normal(0, 0.5, size=3*len(dic["features"]))
+    noise = np.random.normal(0, 0.8, size=3*len(dic["features"]))
     interaction_effects_purchase = sigmoid(np.sum(dic["features"], axis=1))
     baseline_effect_purchase = 0.1 + dic["features"][:, 5] * 0.2 + dic["features"][:, 7] * 0.2 + noise[0:len(dic["features"])]
     treatment_effect_purchase = dic["T"] * (0.1 + interaction_effects_purchase + noise[len(dic["features"]):2*len(dic["features"])])
     treatment_effect_purchase = np.clip(treatment_effect_purchase, 0.01, 100)
-    prob_purchase = np.clip(baseline_effect_purchase + noise[2*len(dic["features"]):3*len((dic["features"]))], 0.1, 0.9)
+    prob_purchase = np.clip(baseline_effect_purchase + noise[2*len(dic["features"]):3*len((dic["features"]))], 0.10, 0.90)
     dic["purchase"] = np.where(dic["visit"] == 1, np.random.binomial(1, prob_purchase), 0)
     return dic
 
@@ -309,7 +309,7 @@ def get_roi_tpmsl(X_train, y_r_train, y_c_train, T_train, X_test):
 
 def calculate_values(roi_scores, T_test, y_r_test, y_c_test):
     sorted_indices = np.argsort(roi_scores)[::-1]
-    p_values = np.linspace(0, 1, 30)
+    p_values = np.linspace(0, 1, 50)
     incremental_costs = []
     incremental_values = []
     
@@ -340,8 +340,8 @@ def main(predict_treatment=False):
     n = 100_000
     p = 8
     dic = {}
-    num_epochs = 40
-    lr = 0.001
+    num_epochs = 150
+    lr = 0.0001
     dic = generate_data(n, p, dic, seed)
     dic = generate_treatment(dic, seed)
     if predict_treatment:
@@ -355,22 +355,22 @@ def main(predict_treatment=False):
               "IPW": [y_r_ipw_train, y_c_ipw_train, y_r_ipw_val, y_c_ipw_val],
               "DR": [y_r_dr_train, y_c_dr_train, y_r_dr_val, y_c_dr_val]
               }
-    method = "IPW"
-    dl, dl_val = loader(X_train, T_train, method_dic[method][0], method_dic[method][1], X_val, T_val, method_dic[method][2], method_dic[method][3], seed)
-    model, loss_history, loss_history_val = get_loss(num_epochs, lr, X_train, dl, dl_val)
-    # plot_loss(loss_history, loss_history_val)
-    roi_direct_ipw = get_roi(model, X_test)
+    # method = "IPW"
+    # dl, dl_val = loader(X_train, T_train, method_dic[method][0], method_dic[method][1], X_val, T_val, method_dic[method][2], method_dic[method][3], seed)
+    # model, loss_history, loss_history_val = get_loss(num_epochs, lr, X_train, dl, dl_val)
+    # roi_direct_ipw = get_roi(model, X_test)
     method = "DR"
     dl, dl_val = loader(X_train, T_train, method_dic[method][0], method_dic[method][1], X_val, T_val, method_dic[method][2], method_dic[method][3], seed)
     model, loss_history, loss_history_val = get_loss(num_epochs, lr, X_train, dl, dl_val)
+    plot_loss(loss_history, loss_history_val)
     roi_direct_dr = get_roi(model, X_test)
     roi_tpmsl = get_roi_tpmsl(X_train, y_r_train, y_c_train, T_train, X_test)
-    incremental_costs, incremental_values = calculate_values(roi_direct_ipw, T_test, y_r_test, y_c_test)
+    # incremental_costs, incremental_values = calculate_values(roi_direct_ipw, T_test, y_r_test, y_c_test)
     incremental_costs_dr, incremental_values_dr = calculate_values(roi_direct_dr, T_test, y_r_test, y_c_test)
     incremental_costs_tpmsl, incremental_values_tpmsl = calculate_values(roi_tpmsl, T_test, y_r_test, y_c_test)
     # plotをリセット
     plt.clf()
-    plt.plot(incremental_costs / max(incremental_costs), incremental_values / max(incremental_values), label="Direct Method IPW", marker="o")
+    # plt.plot(incremental_costs / max(incremental_costs), incremental_values / max(incremental_values), label="Direct Method IPW", marker="o")
     plt.plot(incremental_costs_dr / max(incremental_costs_dr), incremental_values_dr / max(incremental_values_dr), label="DR", marker="o")
     plt.plot(incremental_costs_tpmsl / max(incremental_costs_tpmsl), incremental_values_tpmsl / max(incremental_values_tpmsl), label="TPMSL", marker="o")
     # 対角線を描画
