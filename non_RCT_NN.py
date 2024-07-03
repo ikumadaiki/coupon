@@ -173,14 +173,14 @@ def loader(X_train, T_train, y_r_train, y_c_train, X_val, T_val, y_r_val, y_c_va
     y_c_val_control = y_c_val[control_mask_val]
 
     # データをテンソルに変換してDatasetを作成
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     ds = CustomDataset(
         X_train_treated, y_r_train_treated, y_c_train_treated,
         X_train_control, y_r_train_control, y_c_train_control, seed
     )
     collator = CustomCollator()
 
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     # DataLoaderの定義
     dl = DataLoader(ds, batch_size=128, shuffle=True, collate_fn=collator)
 
@@ -351,29 +351,24 @@ def main(predict_treatment=False):
     mu_r_0, mu_r_1, mu_c_0, mu_c_1 = predict_outcome(dic)
     dic = preprocess_data(dic, mu_r_0, mu_r_1, mu_c_0, mu_c_1)
     X_train, X_val, X_test, T_train, T_val, T_test, y_r_train, y_r_val, y_r_test, y_c_train, y_c_val, y_c_test, y_r_ipw_train, y_r_ipw_val, y_c_ipw_train, y_c_ipw_val, y_r_dr_train, y_r_dr_val, y_c_dr_train, y_c_dr_val = split_data(dic, seed)
-    method_dic = {"Direct": [y_r_train, y_c_train, y_r_val, y_c_val],
-              "IPW": [y_r_ipw_train, y_c_ipw_train, y_r_ipw_val, y_c_ipw_val],
-              "DR": [y_r_dr_train, y_c_dr_train, y_r_dr_val, y_c_dr_val]
-              }
-    # method = "IPW"
-    # dl, dl_val = loader(X_train, T_train, method_dic[method][0], method_dic[method][1], X_val, T_val, method_dic[method][2], method_dic[method][3], seed)
-    # model, loss_history, loss_history_val = get_loss(num_epochs, lr, X_train, dl, dl_val)
-    # roi_direct_ipw = get_roi(model, X_test)
-    method = "DR"
-    dl, dl_val = loader(X_train, T_train, method_dic[method][0], method_dic[method][1], X_val, T_val, method_dic[method][2], method_dic[method][3], seed)
-    model, loss_history, loss_history_val = get_loss(num_epochs, lr, X_train, dl, dl_val)
-    plot_loss(loss_history, loss_history_val)
-    roi_direct_dr = get_roi(model, X_test)
+    method_dic = {
+        # "Direct": [y_r_train, y_c_train, y_r_val, y_c_val],
+        # "IPW": [y_r_ipw_train, y_c_ipw_train, y_r_ipw_val, y_c_ipw_val],
+        "DR": [y_r_dr_train, y_c_dr_train, y_r_dr_val, y_c_dr_val]
+        }
+    roi_dic = {}
+    for method in method_dic:
+        dl, dl_val = loader(X_train, T_train, method_dic[method][0], method_dic[method][1], X_val, T_val, method_dic[method][2], method_dic[method][3], seed)
+        model, loss_history, loss_history_val = get_loss(num_epochs, lr, X_train, dl, dl_val)
+        # plot_loss(loss_history, loss_history_val)
+        roi = get_roi(model, X_test)
+        roi_dic[method] = roi
     roi_tpmsl = get_roi_tpmsl(X_train, y_r_train, y_c_train, T_train, X_test)
-    # incremental_costs, incremental_values = calculate_values(roi_direct_ipw, T_test, y_r_test, y_c_test)
-    incremental_costs_dr, incremental_values_dr = calculate_values(roi_direct_dr, T_test, y_r_test, y_c_test)
-    incremental_costs_tpmsl, incremental_values_tpmsl = calculate_values(roi_tpmsl, T_test, y_r_test, y_c_test)
-    # plotをリセット
+    roi_dic["TPMSL"] = roi_tpmsl
     plt.clf()
-    # plt.plot(incremental_costs / max(incremental_costs), incremental_values / max(incremental_values), label="Direct Method IPW", marker="o")
-    plt.plot(incremental_costs_dr / max(incremental_costs_dr), incremental_values_dr / max(incremental_values_dr), label="DR", marker="o")
-    plt.plot(incremental_costs_tpmsl / max(incremental_costs_tpmsl), incremental_values_tpmsl / max(incremental_values_tpmsl), label="TPMSL", marker="o")
-    # 対角線を描画
+    for roi in roi_dic:
+        incremental_costs, incremental_values = calculate_values(roi_dic[roi], T_test, y_r_test, y_c_test)
+        plt.plot(incremental_costs / max(incremental_costs), incremental_values / max(incremental_values), label=roi)
     plt.plot([0, 1], [0, 1], linestyle="--", color="gray")
     plt.xlabel("Incremental Costs")
     plt.ylabel("Incremental Values")
