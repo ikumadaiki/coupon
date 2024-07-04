@@ -1,8 +1,7 @@
 from typing import Dict, Tuple
 
-import matplotlib.pyplot as plt
 import numpy as np
-from lightgbm import LGBMRegressor
+from lightgbm import LGBMClassifier
 from numpy.typing import NDArray
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
@@ -12,234 +11,226 @@ def sigmoid(x: NDArray[np.float_]) -> NDArray[np.float_]:
     return 1 / (1 + np.exp(-x))
 
 
-def generate_feature(n: int, p: int, dic: Dict, seed: int) -> Dict:
-    np.random.seed(seed)
-    features = np.random.normal(size=(n, p))
-    dic["features"] = features
-    return dic
+class DatasetGenerator:
+    def __init__(self, n_samples: int, n_features: int, std: float, seed: int):
+        self.n_samples = n_samples
+        self.n_features = n_features
+        self.std = std
+        self.seed = seed
 
-
-def generate_treatment(dic: Dict, seed: int) -> Dict:
-    np.random.seed(seed)
-    logistic_model = LogisticRegression(max_iter=1000)
-    dic["target"] = (
-        np.dot(
-            dic["features"], np.random.uniform(0.1, 0.5, size=dic["features"].shape[1])
+    def generate_dataset(self) -> Dict:
+        dataset: Dict[str, NDArray] = {}
+        dataset |= self.generate_feature()
+        dataset |= self.generate_treatment(dataset["features"])
+        dataset |= self.predict_treatment(dataset["features"], dataset["T"])
+        dataset |= self.generate_visit(dataset["features"], dataset["T"])
+        dataset |= self.generate_conversion(
+            dataset["features"], dataset["T"], dataset["visit"]
         )
-        - 0.5
-        + np.random.normal(0, 0.5, size=len(dic["features"]))
-        > 0
-    ).astype(int)
-    logistic_model.fit(dic["features"], dic["target"])
-    dic["T_prob"] = logistic_model.predict_proba(dic["features"])[:, 1]
-    # dic["T_prob"] = sigmoid(
-    #     np.dot(
-    #         dic["features"], np.random.uniform(0.1, 0.5, size=dic["features"].shape[1])
-    #     )
-    #     - 0.5
-    #     + np.random.normal(0, 0.5, size=len(dic["features"]))
-    # )
-    dic["T_prob"] = dic["T_prob"].clip(0.01, 0.99)
-    dic["T"] = np.random.binomial(1, dic["T_prob"])
-    if "target" in dic:
-        dic.pop("target")
-    # dic["T"]が1のdic["T_prob"]の分布を確認
-    dic_1 = dic["T_prob"][dic["T"] == 1]
-    dic_0 = dic["T_prob"][dic["T"] == 0]
-    plt.hist(dic_1, bins=20, alpha=0.5, label="T=1")
-    plt.hist(dic_0, bins=20, alpha=0.5, label="T=0")
-    plt.legend()
-    plt.savefig("treatment_prob.png")
+        dataset |= self.culculate_doubly_robust(
+            dataset["features"],
+            dataset["T"],
+            dataset["T_prob"],
+            dataset["y_r"],
+            dataset["y_c"],
+            dataset["visit"],
+            dataset["purchase"],
+        )
+        dataset |= self.culculate_ipw(
+            dataset["T"], dataset["T_prob"], dataset["y_r"], dataset["y_c"]
+        )
 
-    # import pdb
+        return dataset
 
-    # pdb.set_trace()
-    return dic
+    def generate_feature(self) -> Dict[str, NDArray]:
+        np.random.seed(self.seed)
+        features = np.random.normal(size=(self.n_samples, self.n_features))
+        return {"features": features}
+
+    def generate_treatment(self, features: NDArray) -> Dict[str, NDArray]:
+        np.random.seed(self.seed)
+        logistic_model = LogisticRegression(max_iter=1000)
+        target = (
+            np.dot(features, np.random.uniform(0.1, 0.5, size=features.shape[1]))
+            - 0.5
+            + np.random.normal(0, 0.5, size=len(features))
+            > 0
+        ).astype(int)
+        logistic_model.fit(features, target)
+        T_prob = logistic_model.predict_proba(features)[:, 1]
+        # dic["T_prob"] = sigmoid(
+        #     np.dot(
+        #         features, np.random.uniform(0.1, 0.5, size=features.shape[1])
+        #     )
+        #     - 0.5
+        #     + np.random.normal(0, 0.5, size=len(features))
+        # )
+        T_prob = T_prob.clip(0.01, 0.99)
+        T = np.random.binomial(1, T_prob)
+        # treatment_prob = T_prob[T == 1]
+        # control_prob = T_prob[T == 0]
+        # plt.hist(treatment_prob, bins=20, alpha=0.5, label="T=1")
+        # plt.hist(control_prob, bins=20, alpha=0.5, label="T=0")
+        # plt.legend()
+        # plt.savefig("treatment_prob.png")
+
+        # import pdb
+
+        # pdb.set_trace()
+        return {"T": T, "T_prob": T_prob}
+
+    # T_Probを予測値に変更
+    def predict_treatment(self, features: NDArray, T: NDArray) -> Dict[str, NDArray]:
+        logistic_model = LogisticRegression(max_iter=1000)
+        logistic_model.fit(features, T)
+        T_prob = logistic_model.predict_proba(features)[:, 1]
+        T_prob = T_prob.clip(0.01, 0.99)
+        return {"T_prob": T_prob}
+
+    def generate_visit(self, features: NDArray, T: NDArray) -> Dict[str, NDArray]:
+        np.random.seed(self.seed)
+        noise = np.random.normal(0, self.std, size=3 * len(features))
+        interaction_effects = sigmoid(np.sum(features, axis=1))
+        baseline_effect = (
+            0.3 + features[:, 2] * 0.3 + features[:, 4] * 0.1 + noise[0 : len(features)]
+        )
+        treatment_effect = T * (
+            0.2 + interaction_effects + noise[len(features) : 2 * len(features)]
+        )
+        treatment_effect = np.clip(treatment_effect, 0.01, 100)
+        prob_visit = np.clip(
+            baseline_effect
+            + treatment_effect
+            + noise[2 * len(features) : 3 * len((features))],
+            0.05,
+            0.95,
+        )
+        visit = np.random.binomial(1, prob_visit)
+        return {"visit": visit}
+
+    def generate_conversion(
+        self, features: NDArray, T: NDArray, visit: NDArray
+    ) -> Dict[str, NDArray]:
+        np.random.seed(self.seed)
+        noise = np.random.normal(0, self.std, size=3 * len(features))
+        interaction_effects_purchase = sigmoid(np.sum(features, axis=1))
+        baseline_effect_purchase = (
+            0.1 + features[:, 5] * 0.2 + features[:, 7] * 0.2 + noise[0 : len(features)]
+        )
+        treatment_effect_purchase = T * (
+            0.1
+            + interaction_effects_purchase
+            + noise[len(features) : 2 * len(features)]
+        )
+        treatment_effect_purchase = np.clip(treatment_effect_purchase, 0.01, 100)
+        prob_purchase = np.clip(
+            baseline_effect_purchase + noise[2 * len(features) : 3 * len(features)],
+            0.10,
+            0.90,
+        )
+        purchase = np.where(visit == 1, np.random.binomial(1, prob_purchase), 0)
+        return {"purchase": purchase}
+
+    def predict_outcome(
+        self, features: NDArray, T: NDArray, visit: NDArray, purchase: NDArray
+    ) -> Dict[str, LGBMClassifier]:
+        expected_outcome = {}
+        treatment_mask = T == 1
+        control_mask = T == 0
+        treatment_features = features[treatment_mask]
+        control_features = features[control_mask]
+        treatment_purchase = purchase[treatment_mask]
+        control_purchase = purchase[control_mask]
+        treatment_visit = visit[treatment_mask]
+        control_visit = visit[control_mask]
+
+        mu_r_0 = LGBMClassifier(verbose=-1).fit(control_features, control_purchase)
+        mu_r_1 = LGBMClassifier(verbose=-1).fit(treatment_features, treatment_purchase)
+        mu_c_0 = LGBMClassifier(verbose=-1).fit(control_features, control_visit)
+        mu_c_1 = LGBMClassifier(verbose=-1).fit(treatment_features, treatment_visit)
+        expected_outcome["mu_r_0"] = mu_r_0
+        expected_outcome["mu_r_1"] = mu_r_1
+        expected_outcome["mu_c_0"] = mu_c_0
+        expected_outcome["mu_c_1"] = mu_c_1
+        return expected_outcome
+
+    def culculate_doubly_robust(
+        self,
+        features: NDArray,
+        T: NDArray,
+        T_prob: NDArray,
+        y_r: NDArray,
+        y_c: NDArray,
+        visit: NDArray,
+        purchase: NDArray,
+    ) -> Dict[str, NDArray]:
+        # y_rとy_cの期待値を予測するモデルを学習
+        treatment_mask = T == 1
+        control_mask = T == 0
+        treatment_features = features[treatment_mask]
+        control_features = features[control_mask]
+        treatment_purchase = purchase[treatment_mask]
+        control_purchase = purchase[control_mask]
+        treatment_visit = visit[treatment_mask]
+        control_visit = visit[control_mask]
+
+        mu_r_0 = LGBMClassifier(verbose=-1).fit(control_features, control_purchase)
+        mu_r_1 = LGBMClassifier(verbose=-1).fit(treatment_features, treatment_purchase)
+        mu_c_0 = LGBMClassifier(verbose=-1).fit(control_features, control_visit)
+        mu_c_1 = LGBMClassifier(verbose=-1).fit(treatment_features, treatment_visit)
+
+        doubly_robust = {}
+        doubly_robust["y_r_dr"] = np.where(
+            T == 1,
+            (y_r - mu_r_1.predict(features)) / T_prob + mu_r_1.predict(features),
+            (y_r - mu_r_0.predict(features)) / (1 - T_prob) + mu_r_0.predict(features),
+        )
+        doubly_robust["y_c_dr"] = np.where(
+            T == 1,
+            (y_c - mu_c_1.predict(features)) / T_prob + mu_c_1.predict(features),
+            (y_c - mu_c_0.predict(features)) / (1 - T_prob) + mu_c_0.predict(features),
+        )
+        return doubly_robust
+
+    def culculate_ipw(
+        self,
+        T: NDArray,
+        T_prob: NDArray,
+        y_r: NDArray,
+        y_c: NDArray,
+    ) -> Dict[str, NDArray]:
+        ipw = {}
+
+        ipw["y_r_ipw"] = np.where(
+            T == 1,
+            y_r / T_prob,
+            y_r / (1 - T_prob),
+        )
+        ipw["y_c_ipw"] = np.where(
+            T == 1,
+            y_c / T_prob,
+            y_c / (1 - T_prob),
+        )
+        return ipw
 
 
-# T_Probを予測値に変更
-def predict_treatment(dic: Dict) -> Dict:
-    logistic_model = LogisticRegression(max_iter=1000)
-    logistic_model.fit(dic["features"], dic["T"])
-    dic["T_prob"] = logistic_model.predict_proba(dic["features"])[:, 1]
-    dic["T_prob"] = dic["T_prob"].clip(0.01, 0.99)
-    return dic
-
-
-def generate_visit(dic: Dict, std: float, seed: int) -> Dict:
-    np.random.seed(seed)
-    noise = np.random.normal(0, std, size=3 * len(dic["features"]))
-    interaction_effects = sigmoid(np.sum(dic["features"], axis=1))
-    baseline_effect = (
-        0.3
-        + dic["features"][:, 2] * 0.3
-        + dic["features"][:, 4] * 0.1
-        + noise[0 : len(dic["features"])]
+def split_dataset(dataset: Dict) -> Tuple[Dict, Dict, Dict]:
+    train_val_idx, test_idx = train_test_split(
+        np.arange(len(dataset["features"])), train_size=0.8, random_state=42
     )
-    treatment_effect = dic["T"] * (
-        0.2
-        + interaction_effects
-        + noise[len(dic["features"]) : 2 * len(dic["features"])]
-    )
-    treatment_effect = np.clip(treatment_effect, 0.01, 100)
-    prob_visit = np.clip(
-        baseline_effect
-        + treatment_effect
-        + noise[2 * len(dic["features"]) : 3 * len((dic["features"]))],
-        0.05,
-        0.95,
-    )
-    dic["visit"] = np.random.binomial(1, prob_visit)
-    return dic
+    train_val_dataset = {}
+    test_dataset = {}
+    for key, value in dataset.items():
+        train_val_dataset[key] = value[train_val_idx]
+        test_dataset[key] = value[test_idx]
 
+    train_idx, val_idx = train_test_split(
+        np.arange(len(train_val_dataset["features"])), train_size=0.75, random_state=42
+    )
+    train_dataset = {}
+    val_dataset = {}
+    for key, value in train_val_dataset.items():
+        train_dataset[key] = value[train_idx]
+        val_dataset[key] = value[val_idx]
 
-def generate_conversion(dic: Dict, std: float, seed: int) -> Dict:
-    np.random.seed(seed)
-    noise = np.random.normal(0, std, size=3 * len(dic["features"]))
-    interaction_effects_purchase = sigmoid(np.sum(dic["features"], axis=1))
-    baseline_effect_purchase = (
-        0.1
-        + dic["features"][:, 5] * 0.2
-        + dic["features"][:, 7] * 0.2
-        + noise[0 : len(dic["features"])]
-    )
-    treatment_effect_purchase = dic["T"] * (
-        0.1
-        + interaction_effects_purchase
-        + noise[len(dic["features"]) : 2 * len(dic["features"])]
-    )
-    treatment_effect_purchase = np.clip(treatment_effect_purchase, 0.01, 100)
-    prob_purchase = np.clip(
-        baseline_effect_purchase
-        + noise[2 * len(dic["features"]) : 3 * len((dic["features"]))],
-        0.10,
-        0.90,
-    )
-    dic["purchase"] = np.where(
-        dic["visit"] == 1, np.random.binomial(1, prob_purchase), 0
-    )
-    return dic
-
-
-def predict_outcome(dic: Dict) -> Tuple:
-    dic_t0 = {k: v[dic["T"] == 0] for k, v in dic.items()}
-    dic_t1 = {k: v[dic["T"] == 1] for k, v in dic.items()}
-    mu_r_0 = LGBMRegressor(verbose=-1).fit(dic_t0["features"], dic_t0["purchase"])
-    mu_r_1 = LGBMRegressor(verbose=-1).fit(dic_t1["features"], dic_t1["purchase"])
-    mu_c_0 = LGBMRegressor(verbose=-1).fit(dic_t0["features"], dic_t0["visit"])
-    mu_c_1 = LGBMRegressor(verbose=-1).fit(dic_t1["features"], dic_t1["visit"])
-    return mu_r_0, mu_r_1, mu_c_0, mu_c_1
-
-
-def preprocess_data(
-    dic: Dict,
-    mu_r_0: LGBMRegressor,
-    mu_r_1: LGBMRegressor,
-    mu_c_0: LGBMRegressor,
-    mu_c_1: LGBMRegressor,
-) -> Dict:
-    X, T, y_r, y_c, e = (
-        dic["features"],
-        dic["T"],
-        dic["purchase"],
-        dic["visit"],
-        dic["T_prob"],
-    )
-    dic["y_r_ipw"] = np.where(T == 1, y_r / e, y_r / (1 - e))
-    dic["y_c_ipw"] = np.where(T == 1, y_c / e, y_c / (1 - e))
-    dic["y_r_dr"] = np.where(
-        T == 1,
-        (y_r - mu_r_1.predict(X)) / e + mu_r_1.predict(X),
-        (y_r - mu_r_0.predict(X)) / (1 - e) + mu_r_0.predict(X),
-    )
-    dic["y_c_dr"] = np.where(
-        T == 1,
-        (y_c - mu_c_1.predict(X)) / e + mu_c_1.predict(X),
-        (y_c - mu_c_0.predict(X)) / (1 - e) + mu_c_0.predict(X),
-    )
-    return dic
-
-
-def split_data(dic: Dict, seed: int) -> Tuple:
-    (
-        X_train_val,
-        X_test,
-        T_train_val,
-        T_test,
-        y_r_train_val,
-        y_r_test,
-        y_c_train_val,
-        y_c_test,
-        y_r_ipw_train_val,
-        y_r_ipw_test,
-        y_c_ipw_train_val,
-        y_c_ipw_test,
-        y_r_dr_train_val,
-        y_r_dr_test,
-        y_c_dr_train_val,
-        y_c_dr_test,
-    ) = train_test_split(
-        dic["features"],
-        dic["T"],
-        dic["purchase"],
-        dic["visit"],
-        dic["y_r_ipw"],
-        dic["y_c_ipw"],
-        dic["y_r_dr"],
-        dic["y_c_dr"],
-        train_size=0.8,
-        random_state=42,
-        stratify=dic["T"],
-    )
-    (
-        X_train,
-        X_val,
-        T_train,
-        T_val,
-        y_r_train,
-        y_r_val,
-        y_c_train,
-        y_c_val,
-        y_r_ipw_train,
-        y_r_ipw_val,
-        y_c_ipw_train,
-        y_c_ipw_val,
-        y_r_dr_train,
-        y_r_dr_val,
-        y_c_dr_train,
-        y_c_dr_val,
-    ) = train_test_split(
-        X_train_val,
-        T_train_val,
-        y_r_train_val,
-        y_c_train_val,
-        y_r_ipw_train_val,
-        y_c_ipw_train_val,
-        y_r_dr_train_val,
-        y_c_dr_train_val,
-        train_size=0.75,
-        random_state=42,
-        stratify=T_train_val,
-    )
-    return (
-        X_train,
-        X_val,
-        X_test,
-        T_train,
-        T_val,
-        T_test,
-        y_r_train,
-        y_r_val,
-        y_r_test,
-        y_c_train,
-        y_c_val,
-        y_c_test,
-        y_r_ipw_train,
-        y_r_ipw_val,
-        y_c_ipw_train,
-        y_c_ipw_val,
-        y_r_dr_train,
-        y_r_dr_val,
-        y_c_dr_train,
-        y_c_dr_val,
-    )
+    return train_dataset, val_dataset, test_dataset

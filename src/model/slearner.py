@@ -1,4 +1,4 @@
-from typing import Tuple, Union
+from typing import Optional, Tuple, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -9,8 +9,6 @@ from numpy.typing import NDArray
 from torch.optim import lr_scheduler
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
-from typing import Optional
-
 
 # NNのランダム性を固定
 torch.manual_seed(42)
@@ -34,7 +32,9 @@ class SlearnerDataset(Dataset):
     def __len__(self) -> int:
         return len(self.X)
 
-    def __getitem__(self, idx: int) -> Union[
+    def __getitem__(
+        self, idx: int
+    ) -> Union[
         Tuple[NDArray[np.float_], NDArray[np.float_], NDArray[np.float_]],
         Tuple[NDArray[np.float_], NDArray[np.float_]],
     ]:
@@ -44,57 +44,25 @@ class SlearnerDataset(Dataset):
             return self.X[idx], self.y[idx]
 
 
-def make_loader(
-    X_train: NDArray[np.float_],
-    T_train: NDArray[np.bool_],
-    y_train: NDArray[np.float_],
-    X_val: NDArray[np.float_],
-    T_val: NDArray[np.float_],
-    y_val: NDArray[np.float_],
-    train_flg: bool = True,
-    seed: int,
-) -> Tuple[DataLoader, DataLoader]:
-
-    # データをテンソルに変換してDatasetを作成
-    import pdb
-
-    pdb.set_trace()
-    ds = SlearnerDataset(
-        X_train, T_train, y_train, train_flg, seed=seed
-    )
-
-    import pdb
-
-    pdb.set_trace()
-    # DataLoaderの定義
-    dl = DataLoader(ds, batch_size=128, shuffle=True)
-
-    ds_val = SlearnerDataset(
-        X_val, T_val, y_val, train_flg=False, seed=seed
-    )
-    dl_val = DataLoader(ds_val, batch_size=128, shuffle=True)
-
-    return dl, dl_val
-
-
 # 非線形モデルの定義
-class NonLinearModel(nn.Module):
+class SLearnerNonLinear(nn.Module):
     def __init__(self, input_dim: int) -> None:
-        super(NonLinearModel, self).__init__()
+        super(SLearnerNonLinear, self).__init__()
         self.fc1 = nn.Linear(input_dim, 2 * input_dim)
         self.fc2 = nn.Linear(2 * input_dim, input_dim)
         self.fc3 = nn.Linear(input_dim, int(0.5 * input_dim))
         self.fc4 = nn.Linear(int(0.5 * input_dim), 1)
         self.criterion = nn.BCEWithLogitsLoss()
 
-    def forward(self, x: torch.Tensor, y: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, y: Optional[torch.Tensor] = None) -> dict:
         x = torch.relu(self.fc1(x))
         x = torch.relu(self.fc2(x))
         x = torch.relu(self.fc3(x))
         x = self.fc4(x)
         if y is not None:
             return {"pred": x, "loss": self.criterion(x, y)}
-
+        else:
+            return {"pred": x}
 
 
 def get_loss(
@@ -121,9 +89,7 @@ def get_loss(
         average_loss = 0
         total = len(dl)
         desc = f"Epoch {epoch} AVG Loss: {average_loss:.4f}"
-        for x, t, y in tqdm(
-            dl, total=total, desc=desc, leave=False
-        ):
+        for x, t, y in tqdm(dl, total=total, desc=desc, leave=False):
             optimizer.zero_grad()
             loss: torch.Tensor
             loss = criterion(model(x), y)
@@ -139,9 +105,7 @@ def get_loss(
         # 検証データでの損失関数の計算
         model.eval()
         with torch.no_grad():
-            for x, t, y in tqdm(
-                dl_val, total=total, desc=desc, leave=False
-            ):
+            for x, t, y in tqdm(dl_val, total=total, desc=desc, leave=False):
                 loss: torch.Tensor
                 loss = criterion(model(x), y)
                 loss.backward()
