@@ -1,8 +1,7 @@
 import matplotlib.pyplot as plt
-import torch
 
 from src.evaluate.evaluate import calculate_values
-from src.prediction.model import get_loss, loader
+from src.prediction.model_direct import get_loss, loader
 from src.prediction.predict import get_roi, get_roi_tpmsl
 from src.preprocess.make_data import (
     generate_conversion,
@@ -14,9 +13,6 @@ from src.preprocess.make_data import (
     preprocess_data,
     split_data,
 )
-
-# NNのランダム性を固定
-torch.manual_seed(42)
 
 
 def main(predict_ps: bool) -> None:

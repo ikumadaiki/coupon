@@ -14,7 +14,7 @@ from tqdm import tqdm
 torch.manual_seed(42)
 
 
-class CustomDataset(Dataset):
+class DirectDataset(Dataset):
     def __init__(
         self,
         X_treated: NDArray[np.float_],
@@ -51,7 +51,7 @@ class CustomDataset(Dataset):
 
     def __getitem__(
         self, idx: int
-    ) -> Tuple[
+    ) -> Dict[
         NDArray[np.float_],
         NDArray[np.float_],
         NDArray[np.float_],
@@ -139,7 +139,7 @@ def loader(
     import pdb
 
     pdb.set_trace()
-    ds = CustomDataset(
+    ds = DirectDataset(
         X_train_treated,
         y_r_train_treated,
         y_c_train_treated,

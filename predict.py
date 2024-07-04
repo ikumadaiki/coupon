@@ -1,4 +1,3 @@
-import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from econml.metalearners import SLearner
@@ -6,10 +5,11 @@ from lightgbm import LGBMRegressor
 from numpy.typing import NDArray
 from sklearn.preprocessing import MinMaxScaler
 
-from src.prediction.model import NonLinearModel
+from src.prediction.model_direct import NonLinearModel
 
 # NNのランダム性を固定
 torch.manual_seed(42)
+
 
 # 評価
 def get_roi(model: NonLinearModel, X_test: NDArray[np.float_]) -> NDArray[np.float_]:
@@ -26,6 +26,7 @@ def get_roi(model: NonLinearModel, X_test: NDArray[np.float_]) -> NDArray[np.flo
         roi_direct = q_test.numpy()
         roi_direct = roi_direct.reshape(1, -1)[0]
         return roi_direct
+
 
 def get_roi_tpmsl(
     X_train: NDArray[np.float_],
