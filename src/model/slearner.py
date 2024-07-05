@@ -1,4 +1,4 @@
-from typing import Optional, Tuple, Union
+from typing import Any, Optional, Tuple, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -17,9 +17,9 @@ torch.manual_seed(42)
 class SlearnerDataset(Dataset):
     def __init__(
         self,
-        X: NDArray[np.float_],
-        T: NDArray[np.bool_],
-        y: NDArray[np.float_],
+        X: NDArray[Any],
+        T: Optional[NDArray[Any]],
+        y: Optional[NDArray[Any]],
         train_flg: bool,
         seed: int,
     ) -> None:
@@ -35,8 +35,8 @@ class SlearnerDataset(Dataset):
     def __getitem__(
         self, idx: int
     ) -> Union[
-        Tuple[NDArray[np.float_], NDArray[np.float_], NDArray[np.float_]],
-        Tuple[NDArray[np.float_], NDArray[np.float_]],
+        Tuple[NDArray[Any], NDArray[Any], NDArray[Any]],
+        Tuple[NDArray[Any], NDArray[Any]],
     ]:
         if self.train_flg:
             return self.X[idx], self.T[idx], self.y[idx]
@@ -72,7 +72,7 @@ def get_loss(
     dl: DataLoader,
     dl_val: DataLoader,
 ) -> Tuple:
-    model = NonLinearModel(X_train.shape[1])
+    model = SLearnerNonLinear(X_train.shape[1])
     optimizer = optim.Adam(model.parameters(), lr=lr)
     loss_history, loss_history_val = [], []
     lambda_scheduler = lr_scheduler.LambdaLR(

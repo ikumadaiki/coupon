@@ -1,14 +1,11 @@
 from typing import Any, Dict, Optional, Tuple
 
-import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.optim as optim
 from numpy.typing import NDArray
-from torch.optim import lr_scheduler
-from torch.utils.data import DataLoader, Dataset
-from tqdm import tqdm
+from torch.utils.data import Dataset
+
 
 # NNのランダム性を固定
 torch.manual_seed(42)
@@ -17,10 +14,10 @@ torch.manual_seed(42)
 class TrainDirectDataset(Dataset):  # type: ignore
     def __init__(
         self,
-        X: NDArray[np.float_],
-        T: NDArray[np.bool_],
-        y_r: NDArray[np.float_],
-        y_c: NDArray[np.float_],
+        X: NDArray[Any],
+        T: NDArray[Any],
+        y_r: NDArray[Any],
+        y_c: NDArray[Any],
         seed: int,
     ) -> None:
         np.random.seed(seed)
@@ -39,7 +36,7 @@ class TrainDirectDataset(Dataset):  # type: ignore
         for i in range(len(self.X_treated)):
             control_idx_i = np.random.choice(
                 ununsed_control_idx,
-                round(len(self.X_control) / len(self.X_treated)),
+                self.ratio,
                 replace=False,
             )
             self.treatment_idx_to_control_idx[i] = control_idx_i
@@ -48,11 +45,15 @@ class TrainDirectDataset(Dataset):  # type: ignore
     def __len__(self) -> int:
         return len(self.X_treated)
 
-    def __getitem__(self, idx: int) -> Tuple:
+    def __getitem__(
+        self, idx: int
+    ) -> Tuple[
+        NDArray[Any], NDArray[Any], NDArray[Any], NDArray[Any]
+    ]:
         # treatmentのデータを取得
-        X_treated = self.X_treated[idx]
-        y_r_treated = self.y_r_treated[idx]
-        y_c_treated = self.y_c_treated[idx]
+        X_treated = self.X_treated[idx].reshape(1, -1)
+        y_r_treated = self.y_r_treated[idx].reshape(-1)
+        y_c_treated = self.y_c_treated[idx].reshape(-1)
 
         # controlのデータを取得
         control_idx = self.treatment_idx_to_control_idx[idx]
@@ -83,6 +84,18 @@ class DirectCollator:
             "T": T,
         }
 
+class TestDirectDataset(Dataset):  # type: ignore
+    def __init__(
+            self,
+            X: NDArray[Any],
+    ):
+        self.X = X
+
+    def __len__(self) -> int:
+        return len(self.X)
+    
+    def __getitem__(self, idx: int) -> NDArray[Any]:
+        return {'X': self.X[idx].astype(np.float32)}
 
 # 非線形モデルの定義
 class DirectNonLinear(nn.Module):
@@ -92,7 +105,6 @@ class DirectNonLinear(nn.Module):
         self.fc2 = nn.Linear(2 * input_dim, input_dim)
         self.fc3 = nn.Linear(input_dim, int(0.5 * input_dim))
         self.fc4 = nn.Linear(int(0.5 * input_dim), 1)
-        self.criterion = nn.BCELoss()
 
     def forward(
         self,
@@ -140,67 +152,6 @@ def custom_loss(
     logit_q = torch.log(q / (1 - q))
     loss = -torch.sum(y_r * logit_q + y_c * torch.log(1 - q)) / group_size
     return loss
-
-
-# def get_loss(
-#     num_epochs: int,
-#     lr: float,
-#     X_train: NDArray[np.float_],
-#     dl: DataLoader,
-#     dl_val: DataLoader,
-# ) -> Tuple:
-#     model = NonLinearModel(X_train.shape[1])
-#     optimizer = optim.Adam(model.parameters(), lr=lr)
-#     loss_history, loss_history_val = [], []
-#     lambda_scheduler = lr_scheduler.LambdaLR(
-#         optimizer, lr_lambda=lambda epoch: 0.90**epoch
-#     )
-
-#     # 学習ループ
-#     for epoch in tqdm(range(num_epochs), desc="Training"):
-#         model.train()
-#         total_loss, total_loss_val = 0, 0
-#         count_batches, count_batches_val = 0, 0
-
-#         average_loss = 0
-#         total = len(dl)
-#         desc = f"Epoch {epoch} AVG Loss: {average_loss:.4f}"
-#         for x_1, y_r_1, y_c_1, x_0, y_r_0, y_c_0 in tqdm(
-#             dl, total=total, desc=desc, leave=False
-#         ):
-#             optimizer.zero_grad()
-#             q_1 = model(x_1)
-#             q_0 = model(x_0)
-#             loss_1 = custom_loss(y_r_1, y_c_1, q_1, x_1.size(0))
-#             loss_0 = custom_loss(y_r_0, y_c_0, q_0, x_0.size(0))
-#             loss = loss_1 - loss_0
-#             loss.backward()
-#             optimizer.step()
-#             total_loss += loss.item()
-#             count_batches += 1
-
-#         average_loss = total_loss / count_batches
-#         loss_history.append(average_loss)
-#         lambda_scheduler.step()
-
-#         # 検証データでの損失関数の計算
-#         model.eval()
-#         with torch.no_grad():
-#             for x_1, y_r_1, y_c_1, x_0, y_r_0, y_c_0 in tqdm(
-#                 dl_val, total=total, desc=desc, leave=False
-#             ):
-#                 q_1 = model(x_1)
-#                 q_0 = model(x_0)
-#                 loss_1 = custom_loss(y_r_1, y_c_1, q_1, x_1.size(0))
-#                 loss_0 = custom_loss(y_r_0, y_c_0, q_0, x_0.size(0))
-#                 loss = loss_1 - loss_0
-#                 total_loss_val += loss.item()
-#                 count_batches_val += 1
-
-#         average_loss_val = total_loss_val / count_batches_val
-#         loss_history_val.append(average_loss_val)
-
-#     return model, loss_history, loss_history_val
 
 
 # def plot_loss(loss_history: list, loss_history_val: list) -> None:

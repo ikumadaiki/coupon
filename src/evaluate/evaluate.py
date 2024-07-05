@@ -1,17 +1,18 @@
-from typing import Tuple
+from typing import Any, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
+import torch
 from numpy.typing import NDArray
 
 
 def calculate_values(
-    roi_scores: NDArray[np.float_],
-    T_test: NDArray[np.float_],
-    y_r_test: NDArray[np.float_],
-    y_c_test: NDArray[np.float_],
-) -> Tuple:
-    sorted_indices = np.argsort(roi_scores)[::-1]
+    roi_scores: torch.Tensor,
+    T_test: NDArray[Any],
+    y_r_test: NDArray[Any],
+    y_c_test: NDArray[Any],
+) -> Tuple[Any, Any]:
+    sorted_indices = np.argsort(roi_scores, axis=0)[::-1]
     p_values = np.linspace(0, 1, 50)
     incremental_costs = []
     incremental_values = []
@@ -34,15 +35,14 @@ def calculate_values(
         incremental_costs[0] = 0
         incremental_values[0] = 0
 
-    return incremental_costs, incremental_values
-
+    return np.array(incremental_costs), np.array(incremental_values)
 
 def cost_curve(
-    incremental_costs: NDArray[np.float_], incremental_values: NDArray[np.float_]
+    incremental_costs: NDArray[Any], incremental_values: NDArray[Any]
 ) -> None:
     plt.plot(
-        incremental_costs / max(incremental_costs),
-        incremental_values / max(incremental_values),
+        incremental_costs / incremental_costs.max(),
+        incremental_values / incremental_values.max(),
     )
     plt.xlabel("Incremental Costs")
     plt.ylabel("Incremental Values")

@@ -1,12 +1,24 @@
+from typing import Any
+
+import torch
 import torch.nn as nn
+from numpy.typing import NDArray
 from torch.utils.data import DataLoader
 
-from src.model.direct import DirectCollator, DirectNonLinear, TrainDirectDataset
+from src.model.direct import (
+    DirectCollator,
+    DirectNonLinear,
+    TestDirectDataset,
+    TrainDirectDataset,
+)
 from src.model.slearner import SlearnerDataset, SLearnerNonLinear
+
+# NNのランダム性を固定
+torch.manual_seed(42)
 
 
 def make_loader(
-    dataset: dict,
+    dataset: dict[str, NDArray[Any]],
     model_name: str,
     batch_size: int,
     train_flg: bool,
@@ -26,11 +38,15 @@ def make_loader(
             ds = TrainDirectDataset(
                 X=dataset["features"],
                 T=dataset["T"],
-                y_r=dataset["purchase"],
-                y_c=dataset["visit"],
+                y_r=dataset["y_r"],
+                y_c=dataset["y_c"],
                 seed=seed,
             )  # type: ignore
-        collator = DirectCollator()
+            collator = DirectCollator()
+        else:
+            ds = TestDirectDataset(
+                X=dataset["features"],
+            )
     if train_flg:
         dl = DataLoader(ds, batch_size=batch_size, shuffle=True, collate_fn=collator)  # type: ignore
     else:

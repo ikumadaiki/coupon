@@ -1,4 +1,4 @@
-from typing import Dict, Tuple
+from typing import Any, Dict, Tuple
 
 import numpy as np
 from lightgbm import LGBMClassifier
@@ -7,7 +7,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 
 
-def sigmoid(x: NDArray[np.float_]) -> NDArray[np.float_]:
+def sigmoid(x: NDArray[np.float64]) -> NDArray[np.float64]:
     return 1 / (1 + np.exp(-x))
 
 
@@ -18,14 +18,14 @@ class DatasetGenerator:
         self.std = std
         self.seed = seed
 
-    def generate_dataset(self) -> Dict:
-        dataset: Dict[str, NDArray] = {}
+    def generate_dataset(self) -> Dict[str, NDArray[Any]]:
+        dataset: Dict[str, NDArray[Any]] = {}
         dataset |= self.generate_feature()
         dataset |= self.generate_treatment(dataset["features"])
         dataset |= self.predict_treatment(dataset["features"], dataset["T"])
         dataset |= self.generate_visit(dataset["features"], dataset["T"])
         dataset |= self.generate_conversion(
-            dataset["features"], dataset["T"], dataset["visit"]
+            dataset["features"], dataset["T"], dataset["y_c"]
         )
         dataset |= self.culculate_doubly_robust(
             dataset["features"],
@@ -33,8 +33,8 @@ class DatasetGenerator:
             dataset["T_prob"],
             dataset["y_r"],
             dataset["y_c"],
-            dataset["visit"],
-            dataset["purchase"],
+            dataset["y_c"],
+            dataset["y_r"],
         )
         dataset |= self.culculate_ipw(
             dataset["T"], dataset["T_prob"], dataset["y_r"], dataset["y_c"]
@@ -42,12 +42,12 @@ class DatasetGenerator:
 
         return dataset
 
-    def generate_feature(self) -> Dict[str, NDArray]:
+    def generate_feature(self) -> Dict[str, NDArray[Any]]:
         np.random.seed(self.seed)
         features = np.random.normal(size=(self.n_samples, self.n_features))
         return {"features": features}
 
-    def generate_treatment(self, features: NDArray) -> Dict[str, NDArray]:
+    def generate_treatment(self, features: NDArray[Any]) -> Dict[str, NDArray[Any]]:
         np.random.seed(self.seed)
         logistic_model = LogisticRegression(max_iter=1000)
         target = (
@@ -66,7 +66,7 @@ class DatasetGenerator:
         #     + np.random.normal(0, 0.5, size=len(features))
         # )
         T_prob = T_prob.clip(0.01, 0.99)
-        T = np.random.binomial(1, T_prob)
+        T: NDArray[Any] = np.random.binomial(1, T_prob).astype(bool)
         # treatment_prob = T_prob[T == 1]
         # control_prob = T_prob[T == 0]
         # plt.hist(treatment_prob, bins=20, alpha=0.5, label="T=1")
@@ -80,14 +80,22 @@ class DatasetGenerator:
         return {"T": T, "T_prob": T_prob}
 
     # T_Probを予測値に変更
-    def predict_treatment(self, features: NDArray, T: NDArray) -> Dict[str, NDArray]:
+    def predict_treatment(
+        self,
+        features: NDArray[Any],
+        T: NDArray[Any],
+    ) -> Dict[str, NDArray[Any]]:
         logistic_model = LogisticRegression(max_iter=1000)
         logistic_model.fit(features, T)
         T_prob = logistic_model.predict_proba(features)[:, 1]
         T_prob = T_prob.clip(0.01, 0.99)
         return {"T_prob": T_prob}
 
-    def generate_visit(self, features: NDArray, T: NDArray) -> Dict[str, NDArray]:
+    def generate_visit(
+        self,
+        features: NDArray[Any],
+        T: NDArray[Any],
+    ) -> Dict[str, NDArray[Any]]:
         np.random.seed(self.seed)
         noise = np.random.normal(0, self.std, size=3 * len(features))
         interaction_effects = sigmoid(np.sum(features, axis=1))
@@ -106,11 +114,14 @@ class DatasetGenerator:
             0.95,
         )
         visit = np.random.binomial(1, prob_visit)
-        return {"visit": visit}
+        return {"y_c": visit}
 
     def generate_conversion(
-        self, features: NDArray, T: NDArray, visit: NDArray
-    ) -> Dict[str, NDArray]:
+        self,
+        features: NDArray[Any],
+        T: NDArray[Any],
+        visit: NDArray[Any],
+    ) -> Dict[str, NDArray[Any]]:
         np.random.seed(self.seed)
         noise = np.random.normal(0, self.std, size=3 * len(features))
         interaction_effects_purchase = sigmoid(np.sum(features, axis=1))
@@ -129,41 +140,18 @@ class DatasetGenerator:
             0.90,
         )
         purchase = np.where(visit == 1, np.random.binomial(1, prob_purchase), 0)
-        return {"purchase": purchase}
-
-    def predict_outcome(
-        self, features: NDArray, T: NDArray, visit: NDArray, purchase: NDArray
-    ) -> Dict[str, LGBMClassifier]:
-        expected_outcome = {}
-        treatment_mask = T == 1
-        control_mask = T == 0
-        treatment_features = features[treatment_mask]
-        control_features = features[control_mask]
-        treatment_purchase = purchase[treatment_mask]
-        control_purchase = purchase[control_mask]
-        treatment_visit = visit[treatment_mask]
-        control_visit = visit[control_mask]
-
-        mu_r_0 = LGBMClassifier(verbose=-1).fit(control_features, control_purchase)
-        mu_r_1 = LGBMClassifier(verbose=-1).fit(treatment_features, treatment_purchase)
-        mu_c_0 = LGBMClassifier(verbose=-1).fit(control_features, control_visit)
-        mu_c_1 = LGBMClassifier(verbose=-1).fit(treatment_features, treatment_visit)
-        expected_outcome["mu_r_0"] = mu_r_0
-        expected_outcome["mu_r_1"] = mu_r_1
-        expected_outcome["mu_c_0"] = mu_c_0
-        expected_outcome["mu_c_1"] = mu_c_1
-        return expected_outcome
+        return {"y_r": purchase}
 
     def culculate_doubly_robust(
         self,
-        features: NDArray,
-        T: NDArray,
-        T_prob: NDArray,
-        y_r: NDArray,
-        y_c: NDArray,
-        visit: NDArray,
-        purchase: NDArray,
-    ) -> Dict[str, NDArray]:
+        features: NDArray[Any],
+        T: NDArray[Any],
+        T_prob: NDArray[Any],
+        y_r: NDArray[Any],
+        y_c: NDArray[Any],
+        visit: NDArray[Any],
+        purchase: NDArray[Any],
+    ) -> Dict[str, NDArray[Any]]:
         # y_rとy_cの期待値を予測するモデルを学習
         treatment_mask = T == 1
         control_mask = T == 0
@@ -194,11 +182,11 @@ class DatasetGenerator:
 
     def culculate_ipw(
         self,
-        T: NDArray,
-        T_prob: NDArray,
-        y_r: NDArray,
-        y_c: NDArray,
-    ) -> Dict[str, NDArray]:
+        T: NDArray[Any],
+        T_prob: NDArray[Any],
+        y_r: NDArray[Any],
+        y_c: NDArray[Any],
+    ) -> Dict[str, NDArray[Any]]:
         ipw = {}
 
         ipw["y_r_ipw"] = np.where(
@@ -214,9 +202,14 @@ class DatasetGenerator:
         return ipw
 
 
-def split_dataset(dataset: Dict) -> Tuple[Dict, Dict, Dict]:
+def split_dataset(
+    dataset: Dict[str, NDArray[Any]],
+) -> Tuple[Dict[str, NDArray[Any]], Dict[str, NDArray[Any]], Dict[str, NDArray[Any]]]:
     train_val_idx, test_idx = train_test_split(
-        np.arange(len(dataset["features"])), train_size=0.8, random_state=42
+        np.arange(len(dataset["features"])),
+        train_size=0.8,
+        random_state=42,
+        stratify=dataset["T"],
     )
     train_val_dataset = {}
     test_dataset = {}
@@ -225,7 +218,10 @@ def split_dataset(dataset: Dict) -> Tuple[Dict, Dict, Dict]:
         test_dataset[key] = value[test_idx]
 
     train_idx, val_idx = train_test_split(
-        np.arange(len(train_val_dataset["features"])), train_size=0.75, random_state=42
+        np.arange(len(train_val_dataset["features"])),
+        train_size=0.75,
+        random_state=42,
+        stratify=train_val_dataset["T"],
     )
     train_dataset = {}
     val_dataset = {}

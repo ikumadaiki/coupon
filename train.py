@@ -1,9 +1,12 @@
+import matplotlib.pyplot as plt
+
+from src.evaluate.evaluate import calculate_values, cost_curve
+from src.make_data import DatasetGenerator, split_dataset
 from src.model.common import get_model, make_loader
-from src.preprocess.make_data import DatasetGenerator, split_dataset
 from src.trainer import Trainer
 
 
-def main() -> None:
+def train() -> None:
     seed = 42
     n_samples = 100_000
     n_features = 8
@@ -23,9 +26,6 @@ def main() -> None:
         train_flg=True,
         seed=seed,
     )
-    import pdb
-
-    pdb.set_trace()
     # val_dl = make_loader(
     #     val_dataset,
     #     model_name=model_name,
@@ -36,26 +36,27 @@ def main() -> None:
     model = get_model(model_name=model_name, model_params=model_params)
     trainer = Trainer(num_epochs=num_epochs, lr=lr)
     model = trainer.train(train_dl=train_dl, model=model)
-
-    # modelをsaveする
     trainer.save_model(model, "model.pth")
+    test_dl = make_loader(
+        test_dataset,
+        model_name=model_name,
+        batch_size=batch_size,
+        train_flg=False,
+        seed=seed,
+    )
+    predictions = trainer.predict(test_dl, model).reshape(-1)
+    incremental_costs, incremental_values = calculate_values(
+        predictions, test_dataset["T"], test_dataset["y_r_dr"], test_dataset["y_c_dr"]
+    )
+    cost_curve(incremental_costs, incremental_values)
 
-    # plt.clf()
-    # for roi in roi_dic:
-    #     incremental_costs, incremental_values = calculate_values(
-    #         roi_dic[roi], T_test, y_r_test, y_c_test
-    #     )
-    #     plt.plot(
-    #         incremental_costs / max(incremental_costs),
-    #         incremental_values / max(incremental_values),
-    #         label=roi,
-    #     )
-    # plt.plot([0, 1], [0, 1], linestyle="--", color="gray")
-    # plt.xlabel("Incremental Costs")
-    # plt.ylabel("Incremental Values")
-    # plt.legend()
-    # plt.savefig("cost_curve.png")
+
+# plt.plot([0, 1], [0, 1], linestyle="--", color="gray")
+# plt.xlabel("Incremental Costs")
+# plt.ylabel("Incremental Values")
+# plt.legend()
+# plt.savefig("cost_curve.png")
 
 
 if __name__ == "__main__":
-    main()
+    train()
