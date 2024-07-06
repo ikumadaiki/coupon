@@ -30,7 +30,7 @@ def train() -> None:
     #     val_dataset,
     #     model_name=model_name,
     #     batch_size=batch_size,
-    #     train_flg=,
+    #     train_flg=True,
     #     seed=seed,
     # )
     model = get_model(model_name=model_name, model_params=model_params)
@@ -44,10 +44,11 @@ def train() -> None:
         train_flg=False,
         seed=seed,
     )
-    predictions = trainer.predict(test_dl, model).reshape(-1)
+    predictions = trainer.predict(test_dl, model)
     incremental_costs, incremental_values = calculate_values(
-        predictions, test_dataset["T"], test_dataset["y_r_dr"], test_dataset["y_c_dr"]
+        predictions, test_dataset["T"], test_dataset["y_r"], test_dataset["y_c"]
     )
+    import pdb; pdb.set_trace()
     cost_curve(incremental_costs, incremental_values)
 
 

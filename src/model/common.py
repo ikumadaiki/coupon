@@ -38,8 +38,8 @@ def make_loader(
             ds = TrainDirectDataset(
                 X=dataset["features"],
                 T=dataset["T"],
-                y_r=dataset["y_r"],
-                y_c=dataset["y_c"],
+                y_r=dataset["y_r_dr"],
+                y_c=dataset["y_c_dr"],
                 seed=seed,
             )  # type: ignore
             collator = DirectCollator()

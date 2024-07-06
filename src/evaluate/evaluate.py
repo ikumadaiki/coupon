@@ -32,10 +32,15 @@ def calculate_values(
         incremental_costs.append(ATE_Yc * np.sum(treatment_indices))
         incremental_values.append(ATE_Yr * np.sum(treatment_indices))
         # print(ATE_Yr , ATE_Yc,np.sum(treatment_indices))
-        incremental_costs[0] = 0
-        incremental_values[0] = 0
+    # nanがあれば0に変換
+    incremental_costs = np.array(incremental_costs)
+    incremental_values = np.array(incremental_values)
+    incremental_costs[np.isnan(incremental_costs)] = 0
+    incremental_values[np.isnan(incremental_values)] = 0
 
-    return np.array(incremental_costs), np.array(incremental_values)
+
+    return incremental_costs, incremental_values
+
 
 def cost_curve(
     incremental_costs: NDArray[Any], incremental_values: NDArray[Any]
