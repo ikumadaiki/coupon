@@ -2,12 +2,11 @@ from typing import Any, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
-import torch
 from numpy.typing import NDArray
 
 
 def calculate_values(
-    roi_scores: torch.Tensor,
+    roi_scores: NDArray[Any],
     T_test: NDArray[Any],
     y_r_test: NDArray[Any],
     y_c_test: NDArray[Any],
@@ -38,17 +37,18 @@ def calculate_values(
     incremental_costs[np.isnan(incremental_costs)] = 0
     incremental_values[np.isnan(incremental_values)] = 0
 
-
     return incremental_costs, incremental_values
 
 
 def cost_curve(
     incremental_costs: NDArray[Any], incremental_values: NDArray[Any]
 ) -> None:
+    plt.clf()
     plt.plot(
         incremental_costs / incremental_costs.max(),
         incremental_values / incremental_values.max(),
     )
+    plt.plot([0, 1], [0, 1], linestyle="--", color="gray")
     plt.xlabel("Incremental Costs")
     plt.ylabel("Incremental Values")
     plt.savefig("cost_curve.png")

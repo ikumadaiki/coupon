@@ -44,6 +44,7 @@ def make_loader(
             )  # type: ignore
             collator = DirectCollator()
         else:
+            import pdb; pdb.set_trace()
             ds = TestDirectDataset(
                 X=dataset["features"],
             )

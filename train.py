@@ -1,5 +1,3 @@
-import matplotlib.pyplot as plt
-
 from src.evaluate.evaluate import calculate_values, cost_curve
 from src.make_data import DatasetGenerator, split_dataset
 from src.model.common import get_model, make_loader
@@ -10,9 +8,9 @@ def train() -> None:
     seed = 42
     n_samples = 100_000
     n_features = 8
-    std = 1.0
+    std = 0.6
     num_epochs = 200
-    lr = 0.0001
+    lr = 0.000001
     batch_size = 128
     model_name = "Direct"
     model_params = {"input_dim": n_features}
@@ -26,17 +24,18 @@ def train() -> None:
         train_flg=True,
         seed=seed,
     )
-    # val_dl = make_loader(
-    #     val_dataset,
-    #     model_name=model_name,
-    #     batch_size=batch_size,
-    #     train_flg=True,
-    #     seed=seed,
-    # )
+    val_dl = make_loader(
+        val_dataset,
+        model_name=model_name,
+        batch_size=batch_size,
+        train_flg=True,
+        seed=seed,
+    )
     model = get_model(model_name=model_name, model_params=model_params)
     trainer = Trainer(num_epochs=num_epochs, lr=lr)
-    model = trainer.train(train_dl=train_dl, model=model)
+    model = trainer.train(train_dl=train_dl, val_dl=val_dl, model=model)
     trainer.save_model(model, "model.pth")
+
     test_dl = make_loader(
         test_dataset,
         model_name=model_name,
@@ -44,19 +43,12 @@ def train() -> None:
         train_flg=False,
         seed=seed,
     )
+    import pdb; pdb.set_trace()
     predictions = trainer.predict(test_dl, model)
     incremental_costs, incremental_values = calculate_values(
         predictions, test_dataset["T"], test_dataset["y_r"], test_dataset["y_c"]
     )
-    import pdb; pdb.set_trace()
     cost_curve(incremental_costs, incremental_values)
-
-
-# plt.plot([0, 1], [0, 1], linestyle="--", color="gray")
-# plt.xlabel("Incremental Costs")
-# plt.ylabel("Incremental Values")
-# plt.legend()
-# plt.savefig("cost_curve.png")
 
 
 if __name__ == "__main__":

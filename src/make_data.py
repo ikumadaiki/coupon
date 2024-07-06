@@ -33,8 +33,6 @@ class DatasetGenerator:
             dataset["T_prob"],
             dataset["y_r"],
             dataset["y_c"],
-            dataset["y_c"],
-            dataset["y_r"],
         )
         dataset |= self.culculate_ipw(
             dataset["T"], dataset["T_prob"], dataset["y_r"], dataset["y_c"]
@@ -149,18 +147,16 @@ class DatasetGenerator:
         T_prob: NDArray[Any],
         y_r: NDArray[Any],
         y_c: NDArray[Any],
-        visit: NDArray[Any],
-        purchase: NDArray[Any],
     ) -> Dict[str, NDArray[Any]]:
         # y_rとy_cの期待値を予測するモデルを学習
         treatment_mask = T == 1
         control_mask = T == 0
         treatment_features = features[treatment_mask]
         control_features = features[control_mask]
-        treatment_purchase = purchase[treatment_mask]
-        control_purchase = purchase[control_mask]
-        treatment_visit = visit[treatment_mask]
-        control_visit = visit[control_mask]
+        treatment_purchase = y_r[treatment_mask]
+        control_purchase = y_r[control_mask]
+        treatment_visit = y_c[treatment_mask]
+        control_visit = y_c[control_mask]
 
         mu_r_0 = LGBMClassifier(verbose=-1).fit(control_features, control_purchase)
         mu_r_1 = LGBMClassifier(verbose=-1).fit(treatment_features, treatment_purchase)

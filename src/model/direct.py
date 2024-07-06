@@ -6,7 +6,6 @@ import torch.nn as nn
 from numpy.typing import NDArray
 from torch.utils.data import Dataset
 
-
 # NNのランダム性を固定
 torch.manual_seed(42)
 
@@ -47,9 +46,7 @@ class TrainDirectDataset(Dataset):  # type: ignore
 
     def __getitem__(
         self, idx: int
-    ) -> Tuple[
-        NDArray[Any], NDArray[Any], NDArray[Any], NDArray[Any]
-    ]:
+    ) -> Tuple[NDArray[Any], NDArray[Any], NDArray[Any], NDArray[Any]]:
         # treatmentのデータを取得
         X_treated = self.X_treated[idx].reshape(1, -1)
         y_r_treated = self.y_r_treated[idx].reshape(-1)
@@ -62,40 +59,42 @@ class TrainDirectDataset(Dataset):  # type: ignore
         y_c_control = self.y_c_control[control_idx]
 
         X = np.concatenate([X_treated, X_control], axis=0)
+        T = np.concatenate([np.ones(len(X_treated)), np.zeros(len(X_control))], axis=0)
         y_r = np.concatenate([y_r_treated, y_r_control], axis=0)
         y_c = np.concatenate([y_c_treated, y_c_control], axis=0)
-        T = np.concatenate([np.ones(len(X_treated)), np.zeros(len(X_control))], axis=0)
 
-        return (X, y_r, y_c, T)
+        return (X, T, y_r, y_c)
 
 
 class DirectCollator:
     def __call__(self, batch: list[Any]) -> Dict[str, torch.Tensor]:
         # バッチを作成
         X = torch.cat([torch.tensor(x[0], dtype=torch.float32) for x in batch], dim=0)
+        T = torch.cat([torch.tensor(x[3], dtype=torch.float32) for x in batch], dim=0)
         y_r = torch.cat([torch.tensor(x[1], dtype=torch.float32) for x in batch], dim=0)
         y_c = torch.cat([torch.tensor(x[2], dtype=torch.float32) for x in batch], dim=0)
-        T = torch.cat([torch.tensor(x[3], dtype=torch.float32) for x in batch], dim=0)
 
         return {
             "X": X,
+            "T": T,
             "y_r": y_r,
             "y_c": y_c,
-            "T": T,
         }
+
 
 class TestDirectDataset(Dataset):  # type: ignore
     def __init__(
-            self,
-            X: NDArray[Any],
+        self,
+        X: NDArray[Any],
     ):
-        self.X = X
+        self.X = torch.tensor(X).to(dtype=torch.float32)
 
     def __len__(self) -> int:
         return len(self.X)
-    
-    def __getitem__(self, idx: int) -> NDArray[Any]:
-        return {'X': self.X[idx].astype(np.float32)}
+
+    def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
+        return {"X": self.X[idx]}
+
 
 # 非線形モデルの定義
 class DirectNonLinear(nn.Module):
@@ -109,12 +108,12 @@ class DirectNonLinear(nn.Module):
     def forward(
         self,
         X: torch.Tensor,
+        T: Optional[torch.Tensor] = None,
         y_r: Optional[torch.Tensor] = None,
         y_c: Optional[torch.Tensor] = None,
-        T: Optional[torch.Tensor] = None,
     ) -> Dict[str, torch.Tensor]:
         pred = self._predict(X)
-        if y_r is not None and y_c is not None and T is not None:
+        if T is not None and y_r is not None and y_c is not None:
             treated_mask = T == 1
             X_treated = X[treated_mask]
             y_r_treated = y_r[treated_mask]
@@ -127,8 +126,8 @@ class DirectNonLinear(nn.Module):
             y_c_control = y_c[control_mask]
             q_control = self._predict(X_control)
 
-            loss_1 = custom_loss(y_r_treated, y_c_treated, q_treated, q_treated.size(0))
-            loss_0 = custom_loss(y_r_control, y_c_control, q_control, q_treated.size(0))
+            loss_1 = custom_loss(y_r_treated, y_c_treated, q_treated, X_treated.size(0))
+            loss_0 = custom_loss(y_r_control, y_c_control, q_control, X_control.size(0))
             loss = loss_1 - loss_0
 
             return {"pred": pred, "loss": loss}
