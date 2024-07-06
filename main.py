@@ -5,144 +5,16 @@ import torch.nn as nn
 import torch.optim as optim
 from econml.metalearners import SLearner
 from lightgbm import LGBMRegressor
-from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
 from torch.optim import lr_scheduler
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
+from src.make_data import DatasetGenerator
+
 # NNのランダム性を固定
 torch.manual_seed(42)
-
-
-def sigmoid(x):
-    return 1 / (1 + np.exp(-x))
-
-
-def generate_data(n, p, dic, seed):
-    np.random.seed(seed)
-    features = np.random.normal(size=(n, p))  # 正規分布に従う特徴量を生成
-    dic["features"] = features
-    return dic
-
-
-def generate_treatment(dic, seed):
-    np.random.seed(seed)
-    logistic_model = LogisticRegression(max_iter=1000)
-    dic["target"] = (
-        np.dot(
-            dic["features"], np.random.uniform(0.1, 0.5, size=dic["features"].shape[1])
-        )
-        - 0.5
-        + np.random.normal(0, 0.5, size=len(dic["features"]))
-        > 0
-    ).astype(int)
-    logistic_model.fit(dic["features"], dic["target"])
-    dic["T_prob"] = logistic_model.predict_proba(dic["features"])[:, 1]
-    dic["T_prob"] = dic["T_prob"].clip(0.01, 0.99)
-    dic["T"] = np.random.binomial(1, dic["T_prob"])
-    dic.pop("target")
-    # plt.hist(dic["T_prob"], bins=30)
-    # plt.show()
-    return dic
-
-
-# T_Probを予測値に変更
-def predict_treatment(dic):
-    logistic_model = LogisticRegression(max_iter=1000)
-    logistic_model.fit(dic["features"], dic["T"])
-    dic["T_prob"] = logistic_model.predict_proba(dic["features"])[:, 1]
-    dic["T_prob"] = dic["T_prob"].clip(0.01, 0.99)
-    return dic
-
-
-def generate_visit(dic, seed):
-    np.random.seed(seed)
-    noise = np.random.normal(0, 1, size=3 * len(dic["features"]))
-    interaction_effects = sigmoid(np.sum(dic["features"], axis=1))
-    baseline_effect = (
-        0.3
-        + dic["features"][:, 2] * 0.3
-        + dic["features"][:, 4] * 0.1
-        + noise[0 : len(dic["features"])]
-    )
-    treatment_effect = dic["T"] * (
-        0.2
-        + interaction_effects
-        + noise[len(dic["features"]) : 2 * len(dic["features"])]
-    )
-    treatment_effect = np.clip(treatment_effect, 0.01, 100)
-    prob_visit = np.clip(
-        baseline_effect
-        + treatment_effect
-        + noise[2 * len(dic["features"]) : 3 * len((dic["features"]))],
-        0.05,
-        0.95,
-    )
-    dic["visit"] = np.random.binomial(1, prob_visit)
-    return dic
-
-
-def generate_conversion(dic, seed):
-    np.random.seed(seed)
-    noise = np.random.normal(0, 1, size=3 * len(dic["features"]))
-    interaction_effects_purchase = sigmoid(np.sum(dic["features"], axis=1))
-    baseline_effect_purchase = (
-        0.1
-        + dic["features"][:, 5] * 0.2
-        + dic["features"][:, 7] * 0.2
-        + noise[0 : len(dic["features"])]
-    )
-    treatment_effect_purchase = dic["T"] * (
-        0.1
-        + interaction_effects_purchase
-        + noise[len(dic["features"]) : 2 * len(dic["features"])]
-    )
-    treatment_effect_purchase = np.clip(treatment_effect_purchase, 0.01, 100)
-    prob_purchase = np.clip(
-        baseline_effect_purchase
-        + noise[2 * len(dic["features"]) : 3 * len((dic["features"]))],
-        0.10,
-        0.90,
-    )
-    dic["purchase"] = np.where(
-        dic["visit"] == 1, np.random.binomial(1, prob_purchase), 0
-    )
-    return dic
-
-
-def predict_outcome(dic):
-    dic_t0 = {k: v[dic["T"] == 0] for k, v in dic.items()}
-    dic_t1 = {k: v[dic["T"] == 1] for k, v in dic.items()}
-    mu_r_0 = LGBMRegressor(verbose=-1).fit(dic_t0["features"], dic_t0["purchase"])
-    mu_r_1 = LGBMRegressor(verbose=-1).fit(dic_t1["features"], dic_t1["purchase"])
-    mu_c_0 = LGBMRegressor(verbose=-1).fit(dic_t0["features"], dic_t0["visit"])
-    mu_c_1 = LGBMRegressor(verbose=-1).fit(dic_t1["features"], dic_t1["visit"])
-    return mu_r_0, mu_r_1, mu_c_0, mu_c_1
-
-
-def preprocess_data(dic, mu_r_0, mu_r_1, mu_c_0, mu_c_1):
-    X, T, y_r, y_c, e = (
-        dic["features"],
-        dic["T"],
-        dic["purchase"],
-        dic["visit"],
-        dic["T_prob"],
-    )
-    dic["y_r_ipw"] = np.where(T == 1, y_r / e, y_r / (1 - e))
-    dic["y_c_ipw"] = np.where(T == 1, y_c / e, y_c / (1 - e))
-    dic["y_r_dr"] = np.where(
-        T == 1,
-        (y_r - mu_r_1.predict(X)) / e + mu_r_1.predict(X),
-        (y_r - mu_r_0.predict(X)) / (1 - e) + mu_r_0.predict(X),
-    )
-    dic["y_c_dr"] = np.where(
-        T == 1,
-        (y_c - mu_c_1.predict(X)) / e + mu_c_1.predict(X),
-        (y_c - mu_c_0.predict(X)) / (1 - e) + mu_c_0.predict(X),
-    )
-    return dic
 
 
 def split_data(dic, seed):
@@ -166,8 +38,8 @@ def split_data(dic, seed):
     ) = train_test_split(
         dic["features"],
         dic["T"],
-        dic["purchase"],
-        dic["visit"],
+        dic["y_r"],
+        dic["y_c"],
         dic["y_r_ipw"],
         dic["y_c_ipw"],
         dic["y_r_dr"],
@@ -507,21 +379,17 @@ def cost_curve(incremental_costs, incremental_values):
     plt.show()
 
 
-def main(predict_treatment=False):
+def main(predict_ps=False):
     seed = 42
-    n = 100_000
-    p = 8
+    n_samples = 100_000
+    n_features = 8
     dic = {}
     num_epochs = 150
     lr = 0.0001
-    dic = generate_data(n, p, dic, seed)
-    dic = generate_treatment(dic, seed)
-    if predict_treatment:
-        dic = predict_treatment(dic)
-    dic = generate_visit(dic, seed)
-    dic = generate_conversion(dic, seed)
-    mu_r_0, mu_r_1, mu_c_0, mu_c_1 = predict_outcome(dic)
-    dic = preprocess_data(dic, mu_r_0, mu_r_1, mu_c_0, mu_c_1)
+    std = 1.0
+    dataset = DatasetGenerator(n_samples, n_features, std, seed)
+    dataset = dataset.generate_dataset()
+    dic = dataset
     (
         X_train,
         X_val,
@@ -584,8 +452,8 @@ def main(predict_treatment=False):
     plt.xlabel("Incremental Costs")
     plt.ylabel("Incremental Values")
     plt.legend()
-    plt.show()
+    plt.savefig("cost_curve.png")
 
 
 if __name__ == "__main__":
-    main(predict_treatment=False)
+    main(predict_ps=True)

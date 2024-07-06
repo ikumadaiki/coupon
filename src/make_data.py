@@ -1,7 +1,7 @@
 from typing import Any, Dict, Tuple
 
 import numpy as np
-from lightgbm import LGBMClassifier
+from lightgbm import LGBMRegressor
 from numpy.typing import NDArray
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
@@ -158,10 +158,18 @@ class DatasetGenerator:
         treatment_visit = y_c[treatment_mask]
         control_visit = y_c[control_mask]
 
-        mu_r_0 = LGBMClassifier(verbose=-1).fit(control_features, control_purchase)
-        mu_r_1 = LGBMClassifier(verbose=-1).fit(treatment_features, treatment_purchase)
-        mu_c_0 = LGBMClassifier(verbose=-1).fit(control_features, control_visit)
-        mu_c_1 = LGBMClassifier(verbose=-1).fit(treatment_features, treatment_visit)
+        mu_r_0 = LGBMRegressor(verbose=-1, random_state=42).fit(
+            control_features, control_purchase
+        )
+        mu_r_1 = LGBMRegressor(verbose=-1, random_state=42).fit(
+            treatment_features, treatment_purchase
+        )
+        mu_c_0 = LGBMRegressor(verbose=-1, random_state=42).fit(
+            control_features, control_visit
+        )
+        mu_c_1 = LGBMRegressor(verbose=-1, random_state=42).fit(
+            treatment_features, treatment_visit
+        )
 
         doubly_robust = {}
         doubly_robust["y_r_dr"] = np.where(

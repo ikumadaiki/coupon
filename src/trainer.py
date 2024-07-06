@@ -10,6 +10,9 @@ from torch.optim import lr_scheduler
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
+# NNのランダム性を固定
+torch.manual_seed(42)
+
 
 class Trainer:
     def __init__(
@@ -69,7 +72,9 @@ class Trainer:
     def predict(self, dl: DataLoader, model: nn.Module) -> NDArray[Any]:  # type: ignore
         model.eval()
         predictions = []
-        import pdb; pdb.set_trace()
+        import pdb
+
+        pdb.set_trace()
         for batch in dl:
             output = model(**batch)
             pred: torch.Tensor = output["pred"]
