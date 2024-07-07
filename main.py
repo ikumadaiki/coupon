@@ -101,31 +101,12 @@ def main(predict_ps: bool) -> None:
     num_epochs = 150
     lr = 0.0001
     std = 1.0
-    model_name = "Direct"
     batch_size = 128
+    model_name = "Direct"
+    model_params = {"input_dim": n_features}
     dataset = DatasetGenerator(n_samples, n_features, std, seed)
     dataset = dataset.generate_dataset()
     train_dataset, val_dataset, test_dataset = split_dataset(dataset)
-    X_train, X_val, X_test = (
-        train_dataset["features"],
-        val_dataset["features"],
-        test_dataset["features"],
-    )
-    T_train, T_val, T_test = (
-        train_dataset["T"],
-        val_dataset["T"],
-        test_dataset["T"],
-    )
-    y_r_train, y_r_val, y_r_test = (
-        train_dataset["y_r"],
-        val_dataset["y_r"],
-        test_dataset["y_r"],
-    )
-    y_c_train, y_c_val, y_c_test = (
-        train_dataset["y_c"],
-        val_dataset["y_c"],
-        test_dataset["y_c"],
-    )
     train_dl = make_loader(
         train_dataset,
         model_name=model_name,
@@ -140,19 +121,32 @@ def main(predict_ps: bool) -> None:
         train_flg=True,
         seed=seed,
     )
-    model_params = {"input_dim": n_features}
     model = get_model(model_name=model_name, model_params=model_params)
     roi_dic = {}
     trainer = Trainer(num_epochs=num_epochs, lr=lr)
     model = trainer.train(train_dl=train_dl, val_dl=val_dl, model=model)
-    roi = get_roi(model, X_test)
+    trainer.save_model(model, "model.pth")
+    test_dl = make_loader(
+        test_dataset,
+        model_name=model_name,
+        batch_size=batch_size,
+        train_flg=False,
+        seed=seed,
+    )
+    roi = get_roi(model, test_dataset["features"])
     roi_dic["DR"] = roi
-    roi_tpmsl = get_roi_tpmsl(X_train, y_r_train, y_c_train, T_train, X_test)
+    roi_tpmsl = get_roi_tpmsl(
+        train_dataset["features"],
+        train_dataset["y_r"],
+        train_dataset["y_c"],
+        train_dataset["T"],
+        test_dataset["features"],
+    )
     roi_dic["TPMSL"] = roi_tpmsl
     plt.clf()
     for roi in roi_dic:
         incremental_costs, incremental_values = calculate_values(
-            roi_dic[roi], T_test, y_r_test, y_c_test
+            roi_dic[roi], test_dataset["T"], test_dataset["y_r"], test_dataset["y_c"]
         )
         plt.plot(
             incremental_costs / max(incremental_costs),
