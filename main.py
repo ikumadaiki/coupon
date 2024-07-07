@@ -5,101 +5,15 @@ import torch.nn as nn
 import torch.optim as optim
 from econml.metalearners import SLearner
 from lightgbm import LGBMRegressor
-from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
 from torch.optim import lr_scheduler
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
-from src.make_data import DatasetGenerator
+from src.make_data import DatasetGenerator, split_dataset
 
 # NNのランダム性を固定
 torch.manual_seed(42)
-
-
-def split_data(dic, seed):
-    (
-        X_train_val,
-        X_test,
-        T_train_val,
-        T_test,
-        y_r_train_val,
-        y_r_test,
-        y_c_train_val,
-        y_c_test,
-        y_r_ipw_train_val,
-        y_r_ipw_test,
-        y_c_ipw_train_val,
-        y_c_ipw_test,
-        y_r_dr_train_val,
-        y_r_dr_test,
-        y_c_dr_train_val,
-        y_c_dr_test,
-    ) = train_test_split(
-        dic["features"],
-        dic["T"],
-        dic["y_r"],
-        dic["y_c"],
-        dic["y_r_ipw"],
-        dic["y_c_ipw"],
-        dic["y_r_dr"],
-        dic["y_c_dr"],
-        train_size=0.8,
-        random_state=42,
-        stratify=dic["T"],
-    )
-    (
-        X_train,
-        X_val,
-        T_train,
-        T_val,
-        y_r_train,
-        y_r_val,
-        y_c_train,
-        y_c_val,
-        y_r_ipw_train,
-        y_r_ipw_val,
-        y_c_ipw_train,
-        y_c_ipw_val,
-        y_r_dr_train,
-        y_r_dr_val,
-        y_c_dr_train,
-        y_c_dr_val,
-    ) = train_test_split(
-        X_train_val,
-        T_train_val,
-        y_r_train_val,
-        y_c_train_val,
-        y_r_ipw_train_val,
-        y_c_ipw_train_val,
-        y_r_dr_train_val,
-        y_c_dr_train_val,
-        train_size=0.75,
-        random_state=42,
-        stratify=T_train_val,
-    )
-    return (
-        X_train,
-        X_val,
-        X_test,
-        T_train,
-        T_val,
-        T_test,
-        y_r_train,
-        y_r_val,
-        y_r_test,
-        y_c_train,
-        y_c_val,
-        y_c_test,
-        y_r_ipw_train,
-        y_r_ipw_val,
-        y_c_ipw_train,
-        y_c_ipw_val,
-        y_r_dr_train,
-        y_r_dr_val,
-        y_c_dr_train,
-        y_c_dr_val,
-    )
 
 
 class CustomDataset(Dataset):
@@ -390,28 +304,48 @@ def main(predict_ps=False):
     dataset = DatasetGenerator(n_samples, n_features, std, seed)
     dataset = dataset.generate_dataset()
     dic = dataset
-    (
-        X_train,
-        X_val,
-        X_test,
-        T_train,
-        T_val,
-        T_test,
-        y_r_train,
-        y_r_val,
-        y_r_test,
-        y_c_train,
-        y_c_val,
-        y_c_test,
-        y_r_ipw_train,
-        y_r_ipw_val,
-        y_c_ipw_train,
-        y_c_ipw_val,
-        y_r_dr_train,
-        y_r_dr_val,
-        y_c_dr_train,
-        y_c_dr_val,
-    ) = split_data(dic, seed)
+    train_dataset, val_dataset, test_dataset = split_dataset(dataset)
+    X_train, X_val, X_test = (
+        train_dataset["features"],
+        val_dataset["features"],
+        test_dataset["features"],
+    )
+    T_train, T_val, T_test = (
+        train_dataset["T"],
+        val_dataset["T"],
+        test_dataset["T"],
+    )
+    y_r_train, y_r_val, y_r_test = (
+        train_dataset["y_r"],
+        val_dataset["y_r"],
+        test_dataset["y_r"],
+    )
+    y_c_train, y_c_val, y_c_test = (
+        train_dataset["y_c"],
+        val_dataset["y_c"],
+        test_dataset["y_c"],
+    )
+    y_r_ipw_train, y_r_ipw_val, y_r_ipw_test = (
+        train_dataset["y_r_ipw"],
+        val_dataset["y_r_ipw"],
+        test_dataset["y_r_ipw"],
+    )
+    y_c_ipw_train, y_c_ipw_val, y_c_ipw_test = (
+        train_dataset["y_c_ipw"],
+        val_dataset["y_c_ipw"],
+        test_dataset["y_c_ipw"],
+    )
+    y_r_dr_train, y_r_dr_val, y_r_dr_test = (
+        train_dataset["y_r_dr"],
+        val_dataset["y_r_dr"],
+        test_dataset["y_r_dr"],
+    )
+    y_c_dr_train, y_c_dr_val, y_c_dr_test = (
+        train_dataset["y_c_dr"],
+        val_dataset["y_c_dr"],
+        test_dataset["y_c_dr"],
+    )
+
     method_dic = {
         # "Direct": [y_r_train, y_c_train, y_r_val, y_c_val],
         # "IPW": [y_r_ipw_train, y_c_ipw_train, y_r_ipw_val, y_c_ipw_val],

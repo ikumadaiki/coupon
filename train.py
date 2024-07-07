@@ -9,8 +9,8 @@ def train() -> None:
     n_samples = 100_000
     n_features = 8
     std = 0.6
-    num_epochs = 200
-    lr = 0.000001
+    num_epochs = 150
+    lr = 0.0001
     batch_size = 128
     model_name = "Direct"
     model_params = {"input_dim": n_features}

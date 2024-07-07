@@ -44,10 +44,17 @@ def make_loader(
             )  # type: ignore
             collator = DirectCollator()
         else:
-            import pdb; pdb.set_trace()
-            ds = TestDirectDataset(
-                X=dataset["features"],
-            )
+            # 1000個ずつdsに追加
+            for i in range(0, len(dataset["features"]), 1000):
+                if i == 0:
+                    ds = TestDirectDataset(
+                        X=dataset["features"][i : i + 1000],
+                    )
+                else:
+                    ds += TestDirectDataset(
+                        X=dataset["features"][i : i + 1000],
+                    )
+
     if train_flg:
         dl = DataLoader(ds, batch_size=batch_size, shuffle=True, collate_fn=collator)  # type: ignore
     else:
