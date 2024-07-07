@@ -1,94 +1,16 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-import torch.nn as nn
-import torch.optim as optim
 from econml.metalearners import SLearner
 from lightgbm import LGBMRegressor
 from sklearn.preprocessing import MinMaxScaler
-from torch.optim import lr_scheduler
-from tqdm import tqdm
 
 from src.make_data import DatasetGenerator, split_dataset
-from src.model.common import make_loader
+from src.model.common import get_model, make_loader
+from src.trainer import Trainer
 
 # NNのランダム性を固定
 torch.manual_seed(42)
-
-
-# 非線形モデルの定義
-class NonLinearModel(nn.Module):
-    def __init__(self, input_dim):
-        super(NonLinearModel, self).__init__()
-        self.fc1 = nn.Linear(input_dim, 2 * input_dim)
-        self.fc2 = nn.Linear(2 * input_dim, input_dim)
-        self.fc3 = nn.Linear(input_dim, int(0.5 * input_dim))
-        self.fc4 = nn.Linear(int(0.5 * input_dim), 1)
-
-    def forward(self, x):
-        x = torch.relu(self.fc1(x))
-        x = torch.relu(self.fc2(x))
-        x = torch.relu(self.fc3(x))
-        x = torch.sigmoid(self.fc4(x))
-        return x
-
-
-# 損失関数の定義
-def custom_loss(y_r, y_c, q, group_size):
-    q = torch.clamp(q, 1e-6, 1 - 1e-6)
-    logit_q = torch.log(q / (1 - q))
-    loss = -torch.sum(y_r * logit_q + y_c * torch.log(1 - q)) / group_size
-    return loss
-
-
-def get_loss(num_epochs, lr, X_train, dl, dl_val):
-    model = NonLinearModel(X_train.shape[1])
-    optimizer = optim.Adam(model.parameters(), lr=lr)
-    loss_history, loss_history_val = [], []
-    lambda_scheduler = lr_scheduler.LambdaLR(
-        optimizer, lr_lambda=lambda epoch: 0.90**epoch
-    )
-    # 学習ループ
-    for epoch in tqdm(range(num_epochs), desc="Training"):
-        model.train()
-        total_loss, total_loss_val = 0, 0
-        count_batches, count_batches_val = 0, 0
-        average_loss = 0
-        total = len(dl)
-        desc = f"Epoch {epoch} AVG Loss: {average_loss:.4f}"
-        for x_1, y_r_1, y_c_1, x_0, y_r_0, y_c_0 in tqdm(
-            dl, total=total, desc=desc, leave=False
-        ):
-            optimizer.zero_grad()
-            q_1 = model(x_1)
-            q_0 = model(x_0)
-            loss_1 = custom_loss(y_r_1, y_c_1, q_1, x_1.size(0))
-            loss_0 = custom_loss(y_r_0, y_c_0, q_0, x_0.size(0))
-            loss = loss_1 - loss_0
-            loss.backward()
-            optimizer.step()
-            total_loss += loss.item()
-            count_batches += 1
-        average_loss = total_loss / count_batches
-        loss_history.append(average_loss)
-        lambda_scheduler.step()
-        # 検証データでの損失関数の計算
-        model.eval()
-        with torch.no_grad():
-            for x_1, y_r_1, y_c_1, x_0, y_r_0, y_c_0 in tqdm(
-                dl_val, total=total, desc=desc, leave=False
-            ):
-                q_1 = model(x_1)
-                q_0 = model(x_0)
-                loss_1 = custom_loss(y_r_1, y_c_1, q_1, x_1.size(0))
-                loss_0 = custom_loss(y_r_0, y_c_0, q_0, x_0.size(0))
-                loss = loss_1 - loss_0
-                total_loss_val += loss.item()
-                count_batches_val += 1
-
-        average_loss_val = total_loss_val / count_batches_val
-        loss_history_val.append(average_loss_val)
-    return model, loss_history, loss_history_val
 
 
 # 評価
@@ -98,7 +20,7 @@ def get_roi(model, X_test):
         # 1000個ずつに分けて推論
         for i in range(0, len(X_test), 1000):
             X_test_batch = torch.tensor(X_test[i : i + 1000], dtype=torch.float32)
-            q_test_batch = model(X_test_batch)
+            q_test_batch = model(X_test_batch)["pred"]
             if i == 0:
                 q_test = q_test_batch
             else:
@@ -114,7 +36,7 @@ def plot_loss(loss_history, loss_history_val):
     plt.xlabel("Epoch")
     plt.ylabel("Loss")
     plt.legend()
-    plt.show()
+    plt.savefig("loss.png")
 
 
 def get_roi_tpmsl(X_train, y_r_train, y_c_train, T_train, X_test):
@@ -176,7 +98,6 @@ def main(predict_ps: bool) -> None:
     seed = 42
     n_samples = 100_000
     n_features = 8
-    dic = {}
     num_epochs = 150
     lr = 0.0001
     std = 1.0
@@ -184,7 +105,6 @@ def main(predict_ps: bool) -> None:
     batch_size = 128
     dataset = DatasetGenerator(n_samples, n_features, std, seed)
     dataset = dataset.generate_dataset()
-    dic = dataset
     train_dataset, val_dataset, test_dataset = split_dataset(dataset)
     X_train, X_val, X_test = (
         train_dataset["features"],
@@ -206,26 +126,6 @@ def main(predict_ps: bool) -> None:
         val_dataset["y_c"],
         test_dataset["y_c"],
     )
-    y_r_ipw_train, y_r_ipw_val, y_r_ipw_test = (
-        train_dataset["y_r_ipw"],
-        val_dataset["y_r_ipw"],
-        test_dataset["y_r_ipw"],
-    )
-    y_c_ipw_train, y_c_ipw_val, y_c_ipw_test = (
-        train_dataset["y_c_ipw"],
-        val_dataset["y_c_ipw"],
-        test_dataset["y_c_ipw"],
-    )
-    y_r_dr_train, y_r_dr_val, y_r_dr_test = (
-        train_dataset["y_r_dr"],
-        val_dataset["y_r_dr"],
-        test_dataset["y_r_dr"],
-    )
-    y_c_dr_train, y_c_dr_val, y_c_dr_test = (
-        train_dataset["y_c_dr"],
-        val_dataset["y_c_dr"],
-        test_dataset["y_c_dr"],
-    )
     train_dl = make_loader(
         train_dataset,
         model_name=model_name,
@@ -240,21 +140,13 @@ def main(predict_ps: bool) -> None:
         train_flg=True,
         seed=seed,
     )
-
-    method_dic = {
-        # "Direct": [y_r_train, y_c_train, y_r_val, y_c_val],
-        # "IPW": [y_r_ipw_train, y_c_ipw_train, y_r_ipw_val, y_c_ipw_val],
-        "DR": [y_r_dr_train, y_c_dr_train, y_r_dr_val, y_c_dr_val]
-    }
+    model_params = {"input_dim": n_features}
+    model = get_model(model_name=model_name, model_params=model_params)
     roi_dic = {}
-    for method in method_dic:
-        dl, dl_val = train_dl, val_dl
-        model, loss_history, loss_history_val = get_loss(
-            num_epochs, lr, X_train, dl, dl_val
-        )
-        # plot_loss(loss_history, loss_history_val)
-        roi = get_roi(model, X_test)
-        roi_dic[method] = roi
+    trainer = Trainer(num_epochs=num_epochs, lr=lr)
+    model = trainer.train(train_dl=train_dl, val_dl=val_dl, model=model)
+    roi = get_roi(model, X_test)
+    roi_dic["DR"] = roi
     roi_tpmsl = get_roi_tpmsl(X_train, y_r_train, y_c_train, T_train, X_test)
     roi_dic["TPMSL"] = roi_tpmsl
     plt.clf()

@@ -30,15 +30,18 @@ class Trainer:
         lambda_scheduler = lr_scheduler.LambdaLR(
             optimizer, lr_lambda=lambda epoch: 0.90**epoch
         )
-        loss = np.inf
         train_loss_history: list = []
         val_loss_history: list = []
+        loss = np.inf
         for epoch in tqdm(range(self.num_epochs), desc="Training"):
             model.train()
             total_train_loss: float = 0.0
             count_batch: int = 0
+            average_loss = 0
+            total = len(train_dl)
+            desc = f"Epoch {epoch} AVG Loss: {average_loss:.4f}"
             for batch in tqdm(
-                train_dl, desc=f"Epoch {epoch} loss={loss:.3f}", leave=False
+                train_dl, desc=desc, leave=False
             ):
                 optimizer.zero_grad()
                 output = model(**batch)
@@ -55,18 +58,19 @@ class Trainer:
             total_val_loss = 0.0
             count_val_batch = 0
             with torch.no_grad():
-                for val_batch in val_dl:
+                for val_batch in tqdm(val_dl, total=total, desc=desc, leave=False):
                     val_output = model(**val_batch)
                     val_loss = val_output["loss"].item()
                     total_val_loss += val_loss
                     count_val_batch += 1
             val_loss_history.append(total_val_loss / count_val_batch)
 
-        plt.plot(train_loss_history)
-        plt.savefig("train_loss.png")
-        plt.clf()
-        plt.plot(val_loss_history)
-        plt.savefig("val_loss.png")
+        plt.plot(train_loss_history, label="Train")
+        plt.plot(val_loss_history, label="Validation")
+        plt.savefig("train_val_loss.png")
+        plt.xlabel("Epoch")
+        plt.ylabel("Loss")
+        plt.legend()
         return model
 
     def predict(self, dl: DataLoader, model: nn.Module) -> NDArray[Any]:  # type: ignore
