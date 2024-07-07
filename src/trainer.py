@@ -75,16 +75,14 @@ class Trainer:
 
     def predict(self, dl: DataLoader, model: nn.Module) -> NDArray[Any]:  # type: ignore
         model.eval()
-        predictions = []
-        import pdb
+        with torch.no_grad():
+            predictions = []
+            for batch in dl:
+                output = model(**batch)
+                pred: torch.Tensor = output["pred"]
+                predictions.append(pred.detach().cpu().numpy())
 
-        pdb.set_trace()
-        for batch in dl:
-            output = model(**batch)
-            pred: torch.Tensor = output["pred"]
-            predictions.append(pred.detach().cpu().numpy())
-
-        return np.concatenate(predictions, axis=0)
+            return np.concatenate(predictions, axis=0)
 
     def save_model(self, model: nn.Module, path: str) -> None:
         torch.save(model.state_dict(), path)

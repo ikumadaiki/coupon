@@ -13,32 +13,6 @@ from src.trainer import Trainer
 torch.manual_seed(42)
 
 
-# 評価
-def get_roi(model, X_test):
-    model.eval()
-    with torch.no_grad():
-        # 1000個ずつに分けて推論
-        for i in range(0, len(X_test), 1000):
-            X_test_batch = torch.tensor(X_test[i : i + 1000], dtype=torch.float32)
-            q_test_batch = model(X_test_batch)["pred"]
-            if i == 0:
-                q_test = q_test_batch
-            else:
-                q_test = torch.cat([q_test, q_test_batch], dim=0)
-        roi_direct = q_test.numpy()
-        roi_direct = roi_direct.reshape(1, -1)[0]
-        return roi_direct
-
-
-def plot_loss(loss_history, loss_history_val):
-    plt.plot(loss_history, label="Train")
-    plt.plot(loss_history_val, label="Validation")
-    plt.xlabel("Epoch")
-    plt.ylabel("Loss")
-    plt.legend()
-    plt.savefig("loss.png")
-
-
 def get_roi_tpmsl(X_train, y_r_train, y_c_train, T_train, X_test):
     models = LGBMRegressor()
     S_learner_r = SLearner(overall_model=models)
@@ -58,6 +32,9 @@ def get_roi_tpmsl(X_train, y_r_train, y_c_train, T_train, X_test):
 
 
 def calculate_values(roi_scores, T_test, y_r_test, y_c_test):
+    import pdb
+
+    pdb.set_trace()
     sorted_indices = np.argsort(roi_scores)[::-1]
     p_values = np.linspace(0, 1, 50)
     incremental_costs = []
@@ -86,8 +63,8 @@ def calculate_values(roi_scores, T_test, y_r_test, y_c_test):
 
 def cost_curve(incremental_costs, incremental_values):
     plt.plot(
-        incremental_costs / max(incremental_costs),
-        incremental_values / max(incremental_values),
+        incremental_costs / incremental_costs.max(),
+        incremental_values / incremental_values.max(),
     )
     plt.xlabel("Incremental Costs")
     plt.ylabel("Incremental Values")
@@ -133,8 +110,8 @@ def main(predict_ps: bool) -> None:
         train_flg=False,
         seed=seed,
     )
-    roi = get_roi(model, test_dataset["features"])
-    roi_dic["DR"] = roi
+    predictions = trainer.predict(test_dl, model).squeeze()
+    roi_dic["DR"] = predictions
     roi_tpmsl = get_roi_tpmsl(
         train_dataset["features"],
         train_dataset["y_r"],
@@ -157,7 +134,7 @@ def main(predict_ps: bool) -> None:
     plt.xlabel("Incremental Costs")
     plt.ylabel("Incremental Values")
     plt.legend()
-    plt.savefig("cost_curve.png")
+    plt.savefig("cost_curve_.png")
 
 
 if __name__ == "__main__":

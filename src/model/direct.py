@@ -125,7 +125,7 @@ class TestDirectDataset(Dataset):  # type: ignore
         return len(self.X)
 
     def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
-        return {"X": self.X[idx]}
+        return {"X_treated": self.X[idx]}
 
 
 # 非線形モデルの定義
