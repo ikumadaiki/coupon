@@ -46,11 +46,11 @@ class TrainDirectDataset(Dataset):  # type: ignore
 
     def __getitem__(
         self, idx: int
-    ) -> Tuple[NDArray[Any], NDArray[Any], NDArray[Any], NDArray[Any]]:
+    ) -> Tuple[NDArray[Any], NDArray[Any], NDArray[Any], NDArray[Any], NDArray[Any], NDArray[Any], int]:
         # treatmentのデータを取得
-        X_treated = self.X_treated[idx].reshape(1, -1)
-        y_r_treated = self.y_r_treated[idx].reshape(-1)
-        y_c_treated = self.y_c_treated[idx].reshape(-1)
+        X_treated = self.X_treated[idx]
+        y_r_treated = self.y_r_treated[idx]
+        y_c_treated = self.y_c_treated[idx]
 
         # controlのデータを取得
         control_idx = self.treatment_idx_to_control_idx[idx]
@@ -58,28 +58,43 @@ class TrainDirectDataset(Dataset):  # type: ignore
         y_r_control = self.y_r_control[control_idx]
         y_c_control = self.y_c_control[control_idx]
 
-        X = np.concatenate([X_treated, X_control], axis=0)
-        T = np.concatenate([np.ones(len(X_treated)), np.zeros(len(X_control))], axis=0)
-        y_r = np.concatenate([y_r_treated, y_r_control], axis=0)
-        y_c = np.concatenate([y_c_treated, y_c_control], axis=0)
+        # X = np.concatenate([X_treated, X_control], axis=0)
+        # T = np.concatenate([np.ones(len(X_treated)), np.zeros(len(X_control))], axis=0)
+        # y_r = np.concatenate([y_r_treated, y_r_control], axis=0)
+        # y_c = np.concatenate([y_c_treated, y_c_control], axis=0)
 
-        return (X, T, y_r, y_c)
+        return X_treated, y_r_treated, y_c_treated, X_control, y_r_control, y_c_control, self.ratio
 
 
 class DirectCollator:
-    def __call__(self, batch: list[Any]) -> Dict[str, torch.Tensor]:
+    def __call__(self, batch: list[Any]) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         # バッチを作成
-        X = torch.cat([torch.tensor(x[0], dtype=torch.float32) for x in batch], dim=0)
-        T = torch.cat([torch.tensor(x[3], dtype=torch.float32) for x in batch], dim=0)
-        y_r = torch.cat([torch.tensor(x[1], dtype=torch.float32) for x in batch], dim=0)
-        y_c = torch.cat([torch.tensor(x[2], dtype=torch.float32) for x in batch], dim=0)
+        # X = torch.cat([torch.tensor(x[0], dtype=torch.float32) for x in batch], dim=0)
+        # T = torch.cat([torch.tensor(x[1], dtype=torch.float32) for x in batch], dim=0)
+        # y_r = torch.cat([torch.tensor(x[2], dtype=torch.float32) for x in batch], dim=0)
+        # y_c = torch.cat([torch.tensor(x[3], dtype=torch.float32) for x in batch], dim=0)
+        
+        X_treated = torch.tensor([x[0] for x in batch], dtype=torch.float32)
+        y_r_treated = torch.tensor([x[1] for x in batch], dtype=torch.float32)
+        y_c_treated = torch.tensor([x[2] for x in batch], dtype=torch.float32)
+        X_control = torch.tensor([x[3] for x in batch], dtype=torch.float32)
+        y_r_control = torch.tensor([x[4] for x in batch], dtype=torch.float32)
+        y_c_control = torch.tensor([x[5] for x in batch], dtype=torch.float32)
 
-        return {
-            "X": X,
-            "T": T,
-            "y_r": y_r,
-            "y_c": y_c,
-        }
+        N, D = X_treated.shape
+        ratio = batch[0][6]
+        X_control = X_control.reshape(N * ratio, D)
+        y_r_control = y_r_control.reshape(N * ratio, 1)
+        y_c_control = y_c_control.reshape(N * ratio, 1)
+        return X_treated, y_r_treated, y_c_treated, X_control, y_r_control, y_c_control
+
+
+        # return {
+        #     "X": X,
+        #     "T": T,
+        #     "y_r": y_r,
+        #     "y_c": y_c,
+        # }
 
 
 class TestDirectDataset(Dataset):  # type: ignore

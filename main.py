@@ -7,134 +7,13 @@ from econml.metalearners import SLearner
 from lightgbm import LGBMRegressor
 from sklearn.preprocessing import MinMaxScaler
 from torch.optim import lr_scheduler
-from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
 from src.make_data import DatasetGenerator, split_dataset
+from src.model.common import make_loader
 
 # NNのランダム性を固定
 torch.manual_seed(42)
-
-
-class CustomDataset(Dataset):
-    def __init__(
-        self,
-        X_treated,
-        y_r_treated,
-        y_c_treated,
-        X_control,
-        y_r_control,
-        y_c_control,
-        seed,
-    ):
-        np.random.seed(seed)
-        self.X_treated = X_treated
-        self.y_r_treated = y_r_treated
-        self.y_c_treated = y_c_treated
-        self.X_control = X_control
-        self.y_r_control = y_r_control
-        self.y_c_control = y_c_control
-        # teratment_idxからcontrol_idxをランダム二つ選択する辞書を作成
-        self.treatment_idx_to_control_idx = {}
-        # unused_control_idx = set(list(range(len(self.X_control))))
-        ununsed_control_idx = list(range(len(self.X_control)))
-        for i in range(len(self.X_treated)):
-            control_idx_i = np.random.choice(
-                ununsed_control_idx,
-                round(len(X_control) / len(X_treated)),
-                replace=False,
-            )
-            self.treatment_idx_to_control_idx[i] = control_idx_i
-            # unused_control_idx -= set(control_idx_i)
-
-    def __len__(self):
-        return len(self.X_treated)
-
-    def __getitem__(self, idx):
-        # treatmentのデータを取得
-        X_treated = self.X_treated[idx]
-        y_r_treated = self.y_r_treated[idx]
-        y_c_treated = self.y_c_treated[idx]
-        # controlのデータを取得
-        control_idx = self.treatment_idx_to_control_idx[idx]
-        X_control = self.X_control[control_idx]
-        y_r_control = self.y_r_control[control_idx]
-        y_c_control = self.y_c_control[control_idx]
-        return X_treated, y_r_treated, y_c_treated, X_control, y_r_control, y_c_control
-
-
-class CustomCollator:
-    def __call__(self, batch):
-        # バッチを作成
-        X_treated = torch.tensor([x[0] for x in batch], dtype=torch.float32)
-        y_r_treated = torch.tensor([x[1] for x in batch], dtype=torch.float32)
-        y_c_treated = torch.tensor([x[2] for x in batch], dtype=torch.float32)
-        # controlは2つあるので、それぞれのデータを取得
-        X_control = torch.tensor([x[3] for x in batch], dtype=torch.float32)
-        y_r_control = torch.tensor([x[4] for x in batch], dtype=torch.float32)
-        y_c_control = torch.tensor([x[5] for x in batch], dtype=torch.float32)
-        # reshape
-        N, D = X_treated.shape
-        X_control = X_control.reshape(N * 2, D)
-        y_r_control = y_r_control.reshape(N * 2, 1)
-        y_c_control = y_c_control.reshape(N * 2, 1)
-        return X_treated, y_r_treated, y_c_treated, X_control, y_r_control, y_c_control
-
-
-def loader(
-    X_train, T_train, y_r_train, y_c_train, X_val, T_val, y_r_val, y_c_val, seed
-):
-    # treatmentとcontrolのデータを分割
-    treatment_mask = T_train == 1
-    X_train_treated = X_train[treatment_mask]
-    y_r_train_treated = y_r_train[treatment_mask]
-    y_c_train_treated = y_c_train[treatment_mask]
-    control_mask = T_train == 0
-    X_train_control = X_train[control_mask]
-    y_r_train_control = y_r_train[control_mask]
-    y_c_train_control = y_c_train[control_mask]
-    treatment_mask_val = T_val == 1
-    X_val_treated = X_val[treatment_mask_val]
-    y_r_val_treated = y_r_val[treatment_mask_val]
-    y_c_val_treated = y_c_val[treatment_mask_val]
-    control_mask_val = T_val == 0
-    X_val_control = X_val[control_mask_val]
-    y_r_val_control = y_r_val[control_mask_val]
-    y_c_val_control = y_c_val[control_mask_val]
-
-    # データをテンソルに変換してDatasetを作成
-    import pdb
-
-    pdb.set_trace()
-    ds = CustomDataset(
-        X_train_treated,
-        y_r_train_treated,
-        y_c_train_treated,
-        X_train_control,
-        y_r_train_control,
-        y_c_train_control,
-        seed,
-    )
-    collator = CustomCollator()
-
-    import pdb
-
-    pdb.set_trace()
-    # DataLoaderの定義
-    dl = DataLoader(ds, batch_size=128, shuffle=True, collate_fn=collator)
-
-    ds_val = CustomDataset(
-        X_val_treated,
-        y_r_val_treated,
-        y_c_val_treated,
-        X_val_control,
-        y_r_val_control,
-        y_c_val_control,
-        seed,
-    )
-    collator_val = CustomCollator()
-    dl_val = DataLoader(ds_val, batch_size=128, shuffle=True, collate_fn=collator_val)
-    return dl, dl_val
 
 
 # 非線形モデルの定義
@@ -293,7 +172,7 @@ def cost_curve(incremental_costs, incremental_values):
     plt.show()
 
 
-def main(predict_ps=False):
+def main(predict_ps: bool) -> None:
     seed = 42
     n_samples = 100_000
     n_features = 8
@@ -301,6 +180,8 @@ def main(predict_ps=False):
     num_epochs = 150
     lr = 0.0001
     std = 1.0
+    model_name = "Direct"
+    batch_size = 128
     dataset = DatasetGenerator(n_samples, n_features, std, seed)
     dataset = dataset.generate_dataset()
     dic = dataset
@@ -345,6 +226,20 @@ def main(predict_ps=False):
         val_dataset["y_c_dr"],
         test_dataset["y_c_dr"],
     )
+    train_dl = make_loader(
+        train_dataset,
+        model_name=model_name,
+        batch_size=batch_size,
+        train_flg=True,
+        seed=seed,
+    )
+    val_dl = make_loader(
+        val_dataset,
+        model_name=model_name,
+        batch_size=batch_size,
+        train_flg=True,
+        seed=seed,
+    )
 
     method_dic = {
         # "Direct": [y_r_train, y_c_train, y_r_val, y_c_val],
@@ -353,17 +248,7 @@ def main(predict_ps=False):
     }
     roi_dic = {}
     for method in method_dic:
-        dl, dl_val = loader(
-            X_train,
-            T_train,
-            method_dic[method][0],
-            method_dic[method][1],
-            X_val,
-            T_val,
-            method_dic[method][2],
-            method_dic[method][3],
-            seed,
-        )
+        dl, dl_val = train_dl, val_dl
         model, loss_history, loss_history_val = get_loss(
             num_epochs, lr, X_train, dl, dl_val
         )
