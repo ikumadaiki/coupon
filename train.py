@@ -11,7 +11,7 @@ def train() -> None:
     n_samples = 100_000
     n_features = 8
     std = 1.0
-    num_epochs = 150
+    num_epochs = 100
     lr = 0.0001
     batch_size = 128
     model_name = "Direct"
@@ -33,11 +33,6 @@ def train() -> None:
         train_flg=True,
         seed=seed,
     )
-    model = get_model(model_name=model_name, model_params=model_params)
-    trainer = Trainer(num_epochs=num_epochs, lr=lr)
-    model = trainer.train(train_dl=train_dl, val_dl=val_dl, model=model)
-    trainer.save_model(model, "model.pth")
-
     test_dl = make_loader(
         test_dataset,
         model_name=model_name,
@@ -45,9 +40,10 @@ def train() -> None:
         train_flg=False,
         seed=seed,
     )
-    import pdb
-
-    pdb.set_trace()
+    model = get_model(model_name=model_name, model_params=model_params)
+    trainer = Trainer(num_epochs=num_epochs, lr=lr)
+    model = trainer.train(train_dl=train_dl, val_dl=val_dl, model=model)
+    trainer.save_model(model, "model.pth")
     predictions = trainer.predict(dl=test_dl, model=model).squeeze()
     # cost_curve(incremental_costs, incremental_values)
     roi_dic = {}
