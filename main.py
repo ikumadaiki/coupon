@@ -80,7 +80,7 @@ def main(predict_ps: bool) -> None:
     trainer = Trainer(num_epochs=num_epochs, lr=lr)
     model = trainer.train(train_dl=train_dl, val_dl=val_dl, model=model)
     trainer.save_model(model, "model.pth")
-    predictions = trainer.predict(test_dl, model).squeeze()
+    predictions = trainer.predict(dl=test_dl, model=model).squeeze()
     roi_dic["DR"] = predictions
     roi_tpmsl = get_roi_tpmsl(
         train_dataset["features"],

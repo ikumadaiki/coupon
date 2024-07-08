@@ -43,7 +43,6 @@ def calculate_values(
 def cost_curve(
     incremental_costs: NDArray[Any], incremental_values: NDArray[Any]
 ) -> None:
-    plt.clf()
     plt.plot(
         incremental_costs / incremental_costs.max(),
         incremental_values / incremental_values.max(),
