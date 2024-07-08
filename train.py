@@ -12,8 +12,8 @@ def train() -> None:
     n_features = 8
     std = 1.0
     num_epochs = 150
-    lr = 0.00001
-    batch_size = 64
+    lr = 0.0001
+    batch_size = 128
     model_name = "Direct"
     model_params = {"input_dim": n_features}
     dataset = DatasetGenerator(n_samples, n_features, std, seed)
