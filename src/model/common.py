@@ -23,7 +23,7 @@ def make_loader(
     batch_size: int,
     train_flg: bool,
     seed: int,
-) -> DataLoader:
+) -> DataLoader: # type: ignore
     collator = None
     if model_name == "SLearner":
         ds = SlearnerDataset(

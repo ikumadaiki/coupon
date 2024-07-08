@@ -34,8 +34,11 @@ def calculate_values(
     # nanがあれば0に変換
     incremental_costs = np.array(incremental_costs)
     incremental_values = np.array(incremental_values)
+    incremental_costs[np.isnan(incremental_costs)] = 0
+    incremental_values[np.isnan(incremental_values)] = 0
     incremental_costs[0] = 0
     incremental_values[0] = 0
+    import pdb; pdb.set_trace()
 
     return incremental_costs, incremental_values
 

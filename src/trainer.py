@@ -24,7 +24,7 @@ class Trainer:
         self.lr = lr
 
     def train(
-        self, train_dl: DataLoader, val_dl: DataLoader, model: nn.Module
+        self, train_dl: DataLoader, val_dl: DataLoader, model: nn.Module # type: ignore
     ) -> nn.Module:  # type: ignore
         optimizer = optim.Adam(model.parameters(), lr=self.lr)
         lambda_scheduler = lr_scheduler.LambdaLR(
@@ -40,9 +40,7 @@ class Trainer:
             average_loss = 0
             total = len(train_dl)
             desc = f"Epoch {epoch} AVG Loss: {average_loss:.4f}"
-            for batch in tqdm(
-                train_dl, desc=desc, leave=False
-            ):
+            for batch in tqdm(train_dl, desc=desc, leave=False):
                 optimizer.zero_grad()
                 output = model(**batch)
                 output["loss"].backward()
