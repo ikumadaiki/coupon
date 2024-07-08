@@ -11,7 +11,7 @@ def calculate_values(
     y_r_test: NDArray[Any],
     y_c_test: NDArray[Any],
 ) -> Tuple[Any, Any]:
-    sorted_indices = np.argsort(roi_scores, axis=0)[::-1]
+    sorted_indices = np.argsort(roi_scores)[::-1]
     p_values = np.linspace(0, 1, 50)
     incremental_costs = []
     incremental_values = []
@@ -34,8 +34,8 @@ def calculate_values(
     # nanがあれば0に変換
     incremental_costs = np.array(incremental_costs)
     incremental_values = np.array(incremental_values)
-    incremental_costs[np.isnan(incremental_costs)] = 0
-    incremental_values[np.isnan(incremental_values)] = 0
+    incremental_costs[0] = 0
+    incremental_values[0] = 0
 
     return incremental_costs, incremental_values
 

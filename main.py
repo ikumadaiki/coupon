@@ -1,10 +1,10 @@
 import matplotlib.pyplot as plt
-import numpy as np
 import torch
 from econml.metalearners import SLearner
 from lightgbm import LGBMRegressor
 from sklearn.preprocessing import MinMaxScaler
 
+from src.evaluate.evaluate import calculate_values
 from src.make_data import DatasetGenerator, split_dataset
 from src.model.common import get_model, make_loader
 from src.trainer import Trainer
@@ -29,36 +29,6 @@ def get_roi_tpmsl(X_train, y_r_train, y_c_train, T_train, X_test):
 
     pdb.set_trace()
     return roi_tpmsl
-
-
-def calculate_values(roi_scores, T_test, y_r_test, y_c_test):
-    import pdb
-
-    pdb.set_trace()
-    sorted_indices = np.argsort(roi_scores)[::-1]
-    p_values = np.linspace(0, 1, 50)
-    incremental_costs = []
-    incremental_values = []
-
-    for p in p_values:
-        top_p_indices = sorted_indices[: int(p * len(roi_scores))]
-        treatment_indices = T_test[top_p_indices] == 1
-
-        # ATE (Average Treatment Effect) の計算
-        ATE_Yr = np.mean(y_r_test[top_p_indices][treatment_indices]) - np.mean(
-            y_r_test[top_p_indices][~treatment_indices]
-        )
-        ATE_Yc = np.mean(y_c_test[top_p_indices][treatment_indices]) - np.mean(
-            y_c_test[top_p_indices][~treatment_indices]
-        )
-
-        incremental_costs.append(ATE_Yc * np.sum(treatment_indices))
-        incremental_values.append(ATE_Yr * np.sum(treatment_indices))
-        # print(ATE_Yr , ATE_Yc,np.sum(treatment_indices))
-        incremental_costs[0] = 0
-        incremental_values[0] = 0
-
-    return incremental_costs, incremental_values
 
 
 def cost_curve(incremental_costs, incremental_values):
@@ -98,11 +68,6 @@ def main(predict_ps: bool) -> None:
         train_flg=True,
         seed=seed,
     )
-    model = get_model(model_name=model_name, model_params=model_params)
-    roi_dic = {}
-    trainer = Trainer(num_epochs=num_epochs, lr=lr)
-    model = trainer.train(train_dl=train_dl, val_dl=val_dl, model=model)
-    trainer.save_model(model, "model.pth")
     test_dl = make_loader(
         test_dataset,
         model_name=model_name,
@@ -110,6 +75,11 @@ def main(predict_ps: bool) -> None:
         train_flg=False,
         seed=seed,
     )
+    model = get_model(model_name=model_name, model_params=model_params)
+    roi_dic = {}
+    trainer = Trainer(num_epochs=num_epochs, lr=lr)
+    model = trainer.train(train_dl=train_dl, val_dl=val_dl, model=model)
+    trainer.save_model(model, "model.pth")
     predictions = trainer.predict(test_dl, model).squeeze()
     roi_dic["DR"] = predictions
     roi_tpmsl = get_roi_tpmsl(
