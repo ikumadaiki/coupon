@@ -167,12 +167,3 @@ def custom_loss(
 
     loss = -torch.sum(y_r * logit_q + y_c * torch.log(1 - q)) / group_size
     return loss
-
-
-# def plot_loss(loss_history: list, loss_history_val: list) -> None:
-#     plt.plot(loss_history, label="Train")
-#     plt.plot(loss_history_val, label="Validation")
-#     plt.xlabel("Epoch")
-#     plt.ylabel("Loss")
-#     plt.legend()
-#     plt.savefig("loss.png")
