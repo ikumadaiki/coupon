@@ -3,7 +3,7 @@ from typing import Any
 import torch
 import torch.nn as nn
 from numpy.typing import NDArray
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
 
 from src.model.direct import (
     DirectCollator,
@@ -23,8 +23,9 @@ def make_loader(
     batch_size: int,
     train_flg: bool,
     seed: int,
-) -> DataLoader:
+) -> DataLoader:  # type: ignore
     collator = None
+    ds: Dataset
     if model_name == "SLearner":
         ds = SlearnerDataset(
             X=dataset["features"],
@@ -44,16 +45,17 @@ def make_loader(
             )  # type: ignore
             collator = DirectCollator()
         else:
-            # 1000個ずつdsに追加
-            for i in range(0, len(dataset["features"]), 1000):
-                if i == 0:
-                    ds = TestDirectDataset(
-                        X=dataset["features"][i : i + 1000],
-                    )
-                else:
-                    ds += TestDirectDataset(
-                        X=dataset["features"][i : i + 1000],
-                    )
+            # # 1000個ずつdsに追加
+            # for i in range(0, len(dataset["features"]), 1000):
+            #     if i == 0:
+            #         ds = TestDirectDataset(
+            #             X=dataset["features"][i : i + 1000],
+            #         )
+            #     else:
+            #         ds += TestDirectDataset(
+            #             X=dataset["features"][i : i + 1000],
+            #         )
+            ds = TestDirectDataset(X=dataset["features"])
 
     if train_flg:
         dl = DataLoader(ds, batch_size=batch_size, shuffle=True, collate_fn=collator)  # type: ignore

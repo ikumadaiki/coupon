@@ -26,7 +26,6 @@ class TrainDirectDataset(Dataset):  # type: ignore
         self.X_control = X[T == 0]
         self.y_r_control = y_r[T == 0]
         self.y_c_control = y_c[T == 0]
-
         # teratment_idxからcontrol_idxをランダム二つ選択する辞書を作成
         self.treatment_idx_to_control_idx = {}
         # unused_control_idx = set(list(range(len(self.X_control))))
@@ -53,65 +52,53 @@ class TrainDirectDataset(Dataset):  # type: ignore
         NDArray[Any],
         NDArray[Any],
         NDArray[Any],
-        int,
     ]:
         # treatmentのデータを取得
         X_treated = self.X_treated[idx]
         y_r_treated = self.y_r_treated[idx]
         y_c_treated = self.y_c_treated[idx]
-
         # controlのデータを取得
         control_idx = self.treatment_idx_to_control_idx[idx]
         X_control = self.X_control[control_idx]
         y_r_control = self.y_r_control[control_idx]
         y_c_control = self.y_c_control[control_idx]
 
-        # X = np.concatenate([X_treated, X_control], axis=0)
-        # T = np.concatenate([np.ones(len(X_treated)), np.zeros(len(X_control))], axis=0)
-        # y_r = np.concatenate([y_r_treated, y_r_control], axis=0)
-        # y_c = np.concatenate([y_c_treated, y_c_control], axis=0)
-
-        return (
-            X_treated,
-            y_r_treated,
-            y_c_treated,
-            X_control,
-            y_r_control,
-            y_c_control,
-            self.ratio,
-        )
+        return X_treated, y_r_treated, y_c_treated, X_control, y_r_control, y_c_control
 
 
 class DirectCollator:
-    def __call__(
-        self, batch: list[Any]
-    ) -> Dict[str, torch.Tensor]:
+    def __call__(self, batch: list[Any]) -> Dict[str, torch.Tensor]:
         # バッチを作成
-        # X = torch.cat([torch.tensor(x[0], dtype=torch.float32) for x in batch], dim=0)
-        # T = torch.cat([torch.tensor(x[1], dtype=torch.float32) for x in batch], dim=0)
-        # y_r = torch.cat([torch.tensor(x[2], dtype=torch.float32) for x in batch], dim=0)
-        # y_c = torch.cat([torch.tensor(x[3], dtype=torch.float32) for x in batch], dim=0)
+        X_treated = torch.tensor([x[0] for x in batch], dtype=torch.float32)  # (B, D)
+        y_r_treated = torch.tensor(
+            [x[1] for x in batch], dtype=torch.float32
+        ).unsqueeze(-1)
+        y_c_treated = torch.tensor(
+            [x[2] for x in batch], dtype=torch.float32
+        ).unsqueeze(-1)
+        X_control = torch.tensor(
+            [x[3] for x in batch], dtype=torch.float32
+        )  # (B, 2, D)
+        y_r_control = torch.tensor([x[4] for x in batch], dtype=torch.float32)  # (B, 2)
+        y_c_control = torch.tensor([x[5] for x in batch], dtype=torch.float32)  # (B, 2)
 
-        X_treated = torch.tensor([x[0] for x in batch], dtype=torch.float32)
-        y_r_treated = torch.tensor([x[1] for x in batch], dtype=torch.float32)
-        y_c_treated = torch.tensor([x[2] for x in batch], dtype=torch.float32)
-        X_control = torch.tensor([x[3] for x in batch], dtype=torch.float32)
-        y_r_control = torch.tensor([x[4] for x in batch], dtype=torch.float32)
-        y_c_control = torch.tensor([x[5] for x in batch], dtype=torch.float32)
+        _, D = X_treated.shape
+        X_control = X_control.reshape(-1, D)  # (2B, D)
+        y_r_control = y_r_control.reshape(-1, 1)  # (2B, 1)
+        y_c_control = y_c_control.reshape(-1, 1)  # (2B, 1)
 
-        N, D = X_treated.shape
-        ratio = batch[0][6]
-        X_control = X_control.reshape(N * ratio, D)
-        y_r_control = y_r_control.reshape(N * ratio, 1)
-        y_c_control = y_c_control.reshape(N * ratio, 1)
+        X = torch.cat([X_treated, X_control], dim=0)
+        treated_size = len(X_treated)
+        y_r = torch.cat([y_r_treated, y_r_control], dim=0)
+        y_c = torch.cat([y_c_treated, y_c_control], dim=0)
+
         return {
-            "X_treated": X_treated,
-            "y_r_treated": y_r_treated,
-            "y_c_treated": y_c_treated,
-            "X_control": X_control,
-            "y_r_control": y_r_control,
-            "y_c_control": y_c_control,
+            "X": X,
+            "treated_size": treated_size,
+            "y_r": y_r,
+            "y_c": y_c,
         }
+
 
 
 class TestDirectDataset(Dataset):  # type: ignore
@@ -119,13 +106,13 @@ class TestDirectDataset(Dataset):  # type: ignore
         self,
         X: NDArray[Any],
     ):
-        self.X = torch.tensor(X).to(dtype=torch.float32)
+        self.X = X.astype(np.float32)
 
     def __len__(self) -> int:
         return len(self.X)
 
-    def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
-        return {"X_treated": self.X[idx]}
+    def __getitem__(self, idx: int) -> Dict[str, NDArray[Any]]:
+        return {"X": self.X[idx]}
 
 
 # 非線形モデルの定義
@@ -139,31 +126,28 @@ class DirectNonLinear(nn.Module):
 
     def forward(
         self,
-        X_treated: torch.Tensor,
-        y_r_treated: Optional[torch.Tensor] = None,
-        y_c_treated: Optional[torch.Tensor] = None,
-        X_control: Optional[torch.Tensor] = None,
-        y_r_control: Optional[torch.Tensor] = None,
-        y_c_control: Optional[torch.Tensor] = None,
+        X: torch.Tensor,
+        treated_size: Optional[torch.Tensor] = None,
+        y_r: Optional[torch.Tensor] = None,
+        y_c: Optional[torch.Tensor] = None,
     ) -> Dict[str, torch.Tensor]:
-        # pred = self._predict(X)
-        if (
-            X_control is not None
-            and y_r_treated is not None
-            and y_r_control is not None
-            and y_c_treated is not None
-            and y_c_control is not None
-        ):
-            q_treated = self._predict(X_treated)
-            q_control = self._predict(X_control)
+        pred = self._predict(X)
+        if treated_size is not None and y_r is not None and y_c is not None:
+            q_treated = pred[:treated_size]
+            y_r_treated = y_r[:treated_size].squeeze()
+            y_c_treated = y_c[:treated_size].squeeze()
+            y_r_control = y_r[treated_size:]
+            y_c_control = y_c[treated_size:]
+            q_control = pred[treated_size:]
 
-            loss_1 = custom_loss(y_r_treated, y_c_treated, q_treated, X_treated.size(0))
-            loss_0 = custom_loss(y_r_control, y_c_control, q_control, X_control.size(0))
+            loss_1 = custom_loss(y_r_treated, y_c_treated, q_treated, q_treated.size(0))
+
+            loss_0 = custom_loss(y_r_control, y_c_control, q_control, q_control.size(0))
+
             loss = loss_1 - loss_0
 
-            return {"loss": loss}
+            return {"pred": pred.detach(), "loss": loss}
         else:
-            pred = self._predict(X_treated)
             return {"pred": pred}
 
     def _predict(self, x: torch.Tensor) -> torch.Tensor:
@@ -171,7 +155,6 @@ class DirectNonLinear(nn.Module):
         x = torch.relu(self.fc2(x))
         x = torch.relu(self.fc3(x))
         x = torch.sigmoid(self.fc4(x))
-
         return x
 
 
@@ -179,8 +162,9 @@ class DirectNonLinear(nn.Module):
 def custom_loss(
     y_r: torch.Tensor, y_c: torch.Tensor, q: torch.Tensor, group_size: int
 ) -> torch.Tensor:
-    q = torch.clamp(q, 1e-6, 1 - 1e-6)
-    logit_q = torch.log(q / (1 - q))
+    q = torch.clamp(q, 1e-6, 1 - 1e-6) # (N, 1)
+    logit_q = torch.log(q / (1 - q)) # (N, 1)
+
     loss = -torch.sum(y_r * logit_q + y_c * torch.log(1 - q)) / group_size
     return loss
 
