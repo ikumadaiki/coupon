@@ -14,7 +14,8 @@ def train() -> None:
     num_epochs = 100
     lr = 0.0001
     batch_size = 128
-    model_name = "Direct"
+    # model_name = "Direct"
+    model_name = "SLearner"
     model_params = {"input_dim": n_features}
     dataset = DatasetGenerator(n_samples, n_features, std, seed)
     dataset = dataset.generate_dataset()
@@ -46,14 +47,11 @@ def train() -> None:
     trainer.save_model(model, "model.pth")
     predictions = trainer.predict(dl=test_dl, model=model).squeeze()
     # cost_curve(incremental_costs, incremental_values)
-    roi_dic = {}
-    roi_dic["DR"] = predictions
     plt.clf()
-    for roi in roi_dic:
-        incremental_costs, incremental_values = calculate_values(
-            roi_dic[roi], test_dataset["T"], test_dataset["y_r"], test_dataset["y_c"]
-        )
-        cost_curve(incremental_costs, incremental_values)
+    incremental_costs, incremental_values = calculate_values(
+        predictions, test_dataset["T"], test_dataset["y_r"], test_dataset["y_c"]
+    )
+    cost_curve(incremental_costs, incremental_values)
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Dict, Optional
 
 import torch
 import torch.nn as nn
@@ -21,40 +21,47 @@ def make_loader(
     dataset: dict[str, NDArray[Any]],
     model_name: str,
     batch_size: int,
-    train_flg: bool,
+    train_flg: Optional[bool],
+    method: Optional[str],
     seed: int,
 ) -> DataLoader:  # type: ignore
     collator = None
-    ds: Dataset
+    ds: Dataset  # type: ignore
     if model_name == "SLearner":
         ds = SlearnerDataset(
             X=dataset["features"],
             T=dataset["T"],
             y=dataset["y"],
-            train_flg=train_flg,
             seed=seed,
         )
     elif model_name == "Direct":
         if train_flg:
-            ds = TrainDirectDataset(
-                X=dataset["features"],
-                T=dataset["T"],
-                y_r=dataset["y_r_dr"],
-                y_c=dataset["y_c_dr"],
-                seed=seed,
-            )  # type: ignore
+            if method == "DR":
+                ds = TrainDirectDataset(
+                    X=dataset["features"],
+                    T=dataset["T"],
+                    y_r=dataset["y_r_dr"],
+                    y_c=dataset["y_c_dr"],
+                    seed=seed,
+                )  # type: ignore
+            elif method == "IPW":
+                ds = TrainDirectDataset(
+                    X=dataset["features"],
+                    T=dataset["T"],
+                    y_r=dataset["y_r_ipw"],
+                    y_c=dataset["y_c_ipw"],
+                    seed=seed,
+                )
+            elif method == "Direct":
+                ds = TrainDirectDataset(
+                    X=dataset["features"],
+                    T=dataset["T"],
+                    y_r=dataset["y_r"],
+                    y_c=dataset["y_c"],
+                    seed=seed,
+                )
             collator = DirectCollator()
         else:
-            # # 1000個ずつdsに追加
-            # for i in range(0, len(dataset["features"]), 1000):
-            #     if i == 0:
-            #         ds = TestDirectDataset(
-            #             X=dataset["features"][i : i + 1000],
-            #         )
-            #     else:
-            #         ds += TestDirectDataset(
-            #             X=dataset["features"][i : i + 1000],
-            #         )
             ds = TestDirectDataset(X=dataset["features"])
 
     if train_flg:
@@ -64,7 +71,7 @@ def make_loader(
     return dl
 
 
-def get_model(model_name: str, model_params: dict) -> nn.Module:
+def get_model(model_name: str, model_params: Dict[str, int]) -> nn.Module:
     if model_name == "Direct":
         model = DirectNonLinear(**model_params)
     elif model_name == "SLearner":

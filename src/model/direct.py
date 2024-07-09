@@ -67,7 +67,7 @@ class TrainDirectDataset(Dataset):  # type: ignore
 
 
 class DirectCollator:
-    def __call__(self, batch: list[Any]) -> Dict[str, torch.Tensor]:
+    def __call__(self, batch: list[Any]) -> Dict[str, torch.Tensor | int]:
         # バッチを作成
         X_treated = torch.tensor([x[0] for x in batch], dtype=torch.float32)  # (B, D)
         y_r_treated = torch.tensor(

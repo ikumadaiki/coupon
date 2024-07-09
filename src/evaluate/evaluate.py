@@ -43,13 +43,15 @@ def calculate_values(
 
 
 def cost_curve(
-    incremental_costs: NDArray[Any], incremental_values: NDArray[Any]
+    incremental_costs: NDArray[Any], incremental_values: NDArray[Any], label: str
 ) -> None:
     plt.plot(
         incremental_costs / incremental_costs.max(),
         incremental_values / incremental_values.max(),
+        label=label,
     )
     plt.plot([0, 1], [0, 1], linestyle="--", color="gray")
     plt.xlabel("Incremental Costs")
     plt.ylabel("Incremental Values")
+    plt.legend()
     plt.savefig("cost_curve.png")

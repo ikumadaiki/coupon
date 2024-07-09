@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, List
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -24,14 +24,17 @@ class Trainer:
         self.lr = lr
 
     def train(
-        self, train_dl: DataLoader, val_dl: DataLoader, model: nn.Module # type: ignore
+        self,
+        train_dl: DataLoader,  # type: ignore
+        val_dl: DataLoader,  # type: ignore
+        model: nn.Module,  # type: ignore
     ) -> nn.Module:  # type: ignore
         optimizer = optim.Adam(model.parameters(), lr=self.lr)
         lambda_scheduler = lr_scheduler.LambdaLR(
             optimizer, lr_lambda=lambda epoch: 0.90**epoch
         )
-        train_loss_history: list = []
-        val_loss_history: list = []
+        train_loss_history: List[float] = []
+        val_loss_history: List[float] = []
         loss = np.inf
         for epoch in tqdm(range(self.num_epochs), desc="Training"):
             model.train()
@@ -86,3 +89,4 @@ class Trainer:
 
     def save_model(self, model: nn.Module, path: str) -> None:
         torch.save(model.state_dict(), path)
+
