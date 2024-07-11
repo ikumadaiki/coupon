@@ -31,7 +31,7 @@ def main(predict_ps: bool) -> None:
     n_features = 8
     num_epochs = 150
     lr = 0.0001
-    std = 0.6
+    std = 1.0
     batch_size = 128
     model_name = "Direct"
     model_params = {"input_dim": n_features}
@@ -39,7 +39,11 @@ def main(predict_ps: bool) -> None:
     dataset = dataset.generate_dataset()
     train_dataset, val_dataset, test_dataset = split_dataset(dataset)
     model = get_model(model_name=model_name, model_params=model_params)
-    method_list: list = ["DR", "IPW", "Direct"]
+    method_list: list = [
+        "DR",
+        #  "IPW",
+        #  "Direct"
+    ]
     roi_dic = {}
     for method in method_list:
         train_dl = make_loader(

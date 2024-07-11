@@ -1,5 +1,6 @@
 from typing import Any, Dict, Tuple
 
+import matplotlib.pyplot as plt
 import numpy as np
 from lightgbm import LGBMRegressor
 from numpy.typing import NDArray
@@ -56,21 +57,19 @@ class DatasetGenerator:
         ).astype(int)
         logistic_model.fit(features, target)
         T_prob = logistic_model.predict_proba(features)[:, 1]
-        # dic["T_prob"] = sigmoid(
-        #     np.dot(
-        #         features, np.random.uniform(0.1, 0.5, size=features.shape[1])
-        #     )
+        # T_prob = sigmoid(
+        #     np.dot(features, np.random.uniform(0.1, 0.5, size=features.shape[1]))
         #     - 0.5
         #     + np.random.normal(0, 0.5, size=len(features))
         # )
         T_prob = T_prob.clip(0.01, 0.99)
         T: NDArray[Any] = np.random.binomial(1, T_prob).astype(bool)
-        # treatment_prob = T_prob[T == 1]
-        # control_prob = T_prob[T == 0]
-        # plt.hist(treatment_prob, bins=20, alpha=0.5, label="T=1")
-        # plt.hist(control_prob, bins=20, alpha=0.5, label="T=0")
-        # plt.legend()
-        # plt.savefig("treatment_prob.png")
+        treatment_prob = T_prob[T == 1]
+        control_prob = T_prob[T == 0]
+        plt.hist(treatment_prob, bins=20, alpha=0.5, label="T=1")
+        plt.hist(control_prob, bins=20, alpha=0.5, label="T=0")
+        plt.legend()
+        plt.savefig("treatment_prob.png")
 
         # import pdb
 
@@ -112,6 +111,10 @@ class DatasetGenerator:
             0.95,
         )
         visit = np.random.binomial(1, prob_visit)
+        plt.clf()
+        plt.hist(prob_visit, bins=20, alpha=0.5, label="Visit")
+        plt.savefig("visit_prob.png")
+        # import pdb; pdb.set_trace()
         return {"y_c": visit}
 
     def generate_conversion(
@@ -138,6 +141,10 @@ class DatasetGenerator:
             0.90,
         )
         purchase = np.where(visit == 1, np.random.binomial(1, prob_purchase), 0)
+        plt.clf()
+        plt.hist(prob_purchase, bins=20, alpha=0.5, label="Purchase")
+        plt.savefig("purchase_prob.png")
+        # import pdb; pdb.set_trace()
         return {"y_r": purchase}
 
     def culculate_doubly_robust(
