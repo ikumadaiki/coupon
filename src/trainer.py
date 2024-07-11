@@ -68,12 +68,13 @@ class Trainer:
                     count_val_batch += 1
             val_loss_history.append(total_val_loss / count_val_batch)
 
+        plt.clf()
         plt.plot(train_loss_history, label="Train")
         plt.plot(val_loss_history, label="Validation")
-        plt.savefig("train_val_loss.png")
         plt.xlabel("Epoch")
         plt.ylabel("Loss")
         plt.legend()
+        plt.savefig("train_val_loss.png")
         return model
 
     def predict(self, dl: DataLoader, model: nn.Module) -> NDArray[Any]:  # type: ignore
@@ -89,4 +90,3 @@ class Trainer:
 
     def save_model(self, model: nn.Module, path: str) -> None:
         torch.save(model.state_dict(), path)
-

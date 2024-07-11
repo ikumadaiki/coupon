@@ -2,7 +2,7 @@ from typing import Any, Dict, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
-from lightgbm import LGBMRegressor
+from lightgbm import LGBMClassifier
 from numpy.typing import NDArray
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
@@ -13,17 +13,21 @@ def sigmoid(x: NDArray[np.float64]) -> NDArray[np.float64]:
 
 
 class DatasetGenerator:
-    def __init__(self, n_samples: int, n_features: int, std: float, seed: int):
+    def __init__(
+        self, n_samples: int, n_features: int, std: float, predict_ps: bool, seed: int
+    ):
         self.n_samples = n_samples
         self.n_features = n_features
         self.std = std
+        self.predict_ps = predict_ps
         self.seed = seed
 
     def generate_dataset(self) -> Dict[str, NDArray[Any]]:
         dataset: Dict[str, NDArray[Any]] = {}
         dataset |= self.generate_feature()
         dataset |= self.generate_treatment(dataset["features"])
-        dataset |= self.predict_treatment(dataset["features"], dataset["T"])
+        if self.predict_ps:
+            dataset |= self.predict_treatment(dataset["features"], dataset["T"])
         dataset |= self.generate_visit(dataset["features"], dataset["T"])
         dataset |= self.generate_conversion(
             dataset["features"], dataset["T"], dataset["y_c"]
@@ -62,6 +66,7 @@ class DatasetGenerator:
         #     - 0.5
         #     + np.random.normal(0, 0.5, size=len(features))
         # )
+        # T_prob = sigmoid(features[:, 2] * 10)
         T_prob = T_prob.clip(0.01, 0.99)
         T: NDArray[Any] = np.random.binomial(1, T_prob).astype(bool)
         treatment_prob = T_prob[T == 1]
@@ -82,9 +87,9 @@ class DatasetGenerator:
         features: NDArray[Any],
         T: NDArray[Any],
     ) -> Dict[str, NDArray[Any]]:
-        logistic_model = LogisticRegression(max_iter=1000)
-        logistic_model.fit(features, T)
-        T_prob = logistic_model.predict_proba(features)[:, 1]
+        lgb = LGBMClassifier(verbose=-1, random_state=42)
+        lgb.fit(features, T)
+        T_prob = lgb.predict_proba(features)[:, 1]
         T_prob = T_prob.clip(0.01, 0.99)
         return {"T_prob": T_prob}
 
@@ -94,23 +99,19 @@ class DatasetGenerator:
         T: NDArray[Any],
     ) -> Dict[str, NDArray[Any]]:
         np.random.seed(self.seed)
-        noise = np.random.normal(0, self.std, size=3 * len(features))
-        interaction_effects = sigmoid(np.sum(features, axis=1))
+        noise = np.random.normal(0, self.std, size=len(features))
+        interaction_effects = np.exp(features[:, 0]) * 0.2  # 交互作用効果を現実的に
         baseline_effect = (
-            0.3 + features[:, 2] * 0.3 + features[:, 4] * 0.1 + noise[0 : len(features)]
-        )
-        treatment_effect = T * (
-            0.2 + interaction_effects + noise[len(features) : 2 * len(features)]
-        )
-        treatment_effect = np.clip(treatment_effect, 0.01, 100)
+            0.2 + features[:, 2] + features[:, 4]
+        )  # 基本効果を現実的に
+        treatment_effect = T * (0.1 + interaction_effects)  # 治療効果を現実的に
         prob_visit = np.clip(
-            baseline_effect
-            + treatment_effect
-            + noise[2 * len(features) : 3 * len((features))],
+            sigmoid(baseline_effect + treatment_effect) + noise,
             0.05,
             0.95,
         )
         visit = np.random.binomial(1, prob_visit)
+
         plt.clf()
         plt.hist(prob_visit, bins=20, alpha=0.5, label="Visit")
         plt.savefig("visit_prob.png")
@@ -124,19 +125,12 @@ class DatasetGenerator:
         visit: NDArray[Any],
     ) -> Dict[str, NDArray[Any]]:
         np.random.seed(self.seed)
-        noise = np.random.normal(0, self.std, size=3 * len(features))
-        interaction_effects_purchase = sigmoid(np.sum(features, axis=1))
-        baseline_effect_purchase = (
-            0.1 + features[:, 5] * 0.2 + features[:, 7] * 0.2 + noise[0 : len(features)]
-        )
-        treatment_effect_purchase = T * (
-            0.1
-            + interaction_effects_purchase
-            + noise[len(features) : 2 * len(features)]
-        )
-        treatment_effect_purchase = np.clip(treatment_effect_purchase, 0.01, 100)
+        noise = np.random.normal(0, self.std, size=len(features))
+        interaction_effects_purchase = np.exp(features[:, 1]) * 0.2
+        baseline_effect_purchase = 0.1 + features[:, 5] + features[:, 7]
+        treatment_effect_purchase = T * (0.05 + interaction_effects_purchase)
         prob_purchase = np.clip(
-            baseline_effect_purchase + noise[2 * len(features) : 3 * len(features)],
+            sigmoid(baseline_effect_purchase + treatment_effect_purchase) + noise,
             0.10,
             0.90,
         )
@@ -165,24 +159,26 @@ class DatasetGenerator:
         treatment_visit = y_c[treatment_mask]
         control_visit = y_c[control_mask]
 
-        mu_r_0 = LGBMRegressor(verbose=-1, random_state=42).fit(
+        mu_r_0 = LGBMClassifier(verbose=-1, random_state=42).fit(
             control_features, control_purchase
         )
-        mu_r_1 = LGBMRegressor(verbose=-1, random_state=42).fit(
+        mu_r_1 = LGBMClassifier(verbose=-1, random_state=42).fit(
             treatment_features, treatment_purchase
         )
-        mu_c_0 = LGBMRegressor(verbose=-1, random_state=42).fit(
+        mu_c_0 = LGBMClassifier(verbose=-1, random_state=42).fit(
             control_features, control_visit
         )
-        mu_c_1 = LGBMRegressor(verbose=-1, random_state=42).fit(
+        mu_c_1 = LGBMClassifier(verbose=-1, random_state=42).fit(
             treatment_features, treatment_visit
         )
 
         doubly_robust = {}
         doubly_robust["y_r_dr"] = np.where(
             T == 1,
-            (y_r - mu_r_1.predict(features)) / T_prob + mu_r_1.predict(features),
-            (y_r - mu_r_0.predict(features)) / (1 - T_prob) + mu_r_0.predict(features),
+            (y_r - mu_r_1.predict_proba(features)[:, 1]) / T_prob
+            + mu_r_1.predict_proba(features)[:, 1],
+            (y_r - mu_r_0.predict_proba(features)[:, 1]) / (1 - T_prob)
+            + mu_r_0.predict_proba(features)[:, 1],
         )
         doubly_robust["y_c_dr"] = np.where(
             T == 1,

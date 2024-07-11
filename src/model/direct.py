@@ -119,10 +119,19 @@ class TestDirectDataset(Dataset):  # type: ignore
 class DirectNonLinear(nn.Module):
     def __init__(self, input_dim: int) -> None:
         super(DirectNonLinear, self).__init__()
-        self.fc1 = nn.Linear(input_dim, 2 * input_dim)
-        self.fc2 = nn.Linear(2 * input_dim, input_dim)
-        self.fc3 = nn.Linear(input_dim, int(0.5 * input_dim))
-        self.fc4 = nn.Linear(int(0.5 * input_dim), 1)
+        self.mlp = nn.Sequential(
+            nn.Linear(input_dim, 2 * input_dim),
+            nn.ReLU(),
+            nn.Dropout(0.05),
+            nn.Linear(2 * input_dim, input_dim),
+            nn.ReLU(),
+            nn.Dropout(0.05),
+            nn.Linear(input_dim, int(0.5 * input_dim)),
+            nn.ReLU(),
+            nn.Dropout(0.05),
+            nn.Linear(int(0.5 * input_dim), 1),
+            nn.Sigmoid(),
+        )
 
     def forward(
         self,
@@ -134,8 +143,8 @@ class DirectNonLinear(nn.Module):
         pred = self._predict(X)
         if treated_size is not None and y_r is not None and y_c is not None:
             q_treated = pred[:treated_size]
-            y_r_treated = y_r[:treated_size].squeeze()
-            y_c_treated = y_c[:treated_size].squeeze()
+            y_r_treated = y_r[:treated_size]
+            y_c_treated = y_c[:treated_size]
             y_r_control = y_r[treated_size:]
             y_c_control = y_c[treated_size:]
             q_control = pred[treated_size:]
@@ -151,11 +160,7 @@ class DirectNonLinear(nn.Module):
             return {"pred": pred}
 
     def _predict(self, x: torch.Tensor) -> torch.Tensor:
-        x = torch.relu(self.fc1(x))
-        x = torch.relu(self.fc2(x))
-        x = torch.relu(self.fc3(x))
-        x = torch.sigmoid(self.fc4(x))
-        return x
+        return self.mlp(x) # type: ignore
 
 
 # 損失関数の定義
