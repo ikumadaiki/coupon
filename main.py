@@ -43,8 +43,8 @@ def main(predict_ps: bool) -> None:
     train_dataset, val_dataset, test_dataset = split_dataset(dataset)
     model = get_model(model_name=model_name, model_params=model_params)
     method_list: list = ["DR",
-                        #  "IPW",
-                        #  "Direct"
+                         "IPW",
+                         "Direct"
                          ]
     roi_dic = {}
     for method in method_list:
@@ -94,4 +94,4 @@ def main(predict_ps: bool) -> None:
 
 
 if __name__ == "__main__":
-    main(predict_ps=False)
+    main(predict_ps=True)
