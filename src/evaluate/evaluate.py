@@ -3,6 +3,8 @@ from typing import Any, Tuple
 import matplotlib.pyplot as plt
 import numpy as np
 from numpy.typing import NDArray
+from scipy.integrate import quad
+from scipy.interpolate import interp1d
 
 
 def calculate_values(
@@ -30,6 +32,7 @@ def calculate_values(
 
         incremental_costs.append(ATE_Yc * np.sum(treatment_indices))
         incremental_values.append(ATE_Yr * np.sum(treatment_indices))
+        import pdb; pdb.set_trace()
         # print(ATE_Yr , ATE_Yc,np.sum(treatment_indices))
     # nanがあれば0に変換
     incremental_costs = np.array(incremental_costs)
@@ -45,13 +48,30 @@ def calculate_values(
 def cost_curve(
     incremental_costs: NDArray[Any], incremental_values: NDArray[Any], label: str
 ) -> None:
-    plt.plot(
-        incremental_costs / incremental_costs.max(),
-        incremental_values / incremental_values.max(),
-        label=label,
-    )
+    normalized_costs = incremental_costs / incremental_costs.max()
+    normalized_values = incremental_values / incremental_values.max()
+    
+    # グラフ描画
+    plt.plot(normalized_costs, normalized_values, label=label)
     plt.plot([0, 1], [0, 1], linestyle="--", color="gray")
     plt.xlabel("Incremental Costs")
     plt.ylabel("Incremental Values")
     plt.legend()
     plt.savefig("cost_curve.png")
+
+    # 線形補間による関数の定義
+    curve_function = interp1d(normalized_costs, normalized_values, fill_value="extrapolate")
+    
+    # y = x 関数との差を積分（y = x より上の部分のみ）
+    def area_above_y_equals_x(x: float) -> float:
+        difference = curve_function(x) - x
+        return difference
+    
+    # 0から1まで積分
+    area, error = quad(area_above_y_equals_x, 0, 1)
+    print(f"The area above y = x is approximately {area:.4f}, with an error of {error:.4e}.")
+
+# # 例として適用するデータ
+# incremental_costs = np.array([0, 0.25, 0.5, 0.75, 1])
+# incremental_values = np.array([0, 0.3, 0.6, 0.8, 1])
+# cost_curve(incremental_costs, incremental_values, "Example Curve")

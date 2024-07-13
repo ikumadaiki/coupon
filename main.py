@@ -1,8 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from econml.metalearners import SLearner
-from lightgbm import LGBMRegressor
+from lightgbm import LGBMClassifier
 from sklearn.preprocessing import MinMaxScaler
 
 from src.evaluate.evaluate import calculate_values, cost_curve
@@ -15,11 +14,20 @@ torch.manual_seed(42)
 
 
 def get_roi_tpmsl(X_train, y_r_train, y_c_train, T_train, X_test):
-    models = LGBMRegressor(verbose=-1)
-    S_learner_r = SLearner(overall_model=models).fit(y_r_train, T_train, X=X_train)
-    S_learner_c = SLearner(overall_model=models).fit(y_c_train, T_train, X=X_train)
-    tau_r = S_learner_r.effect(X_test)
-    tau_c = S_learner_c.effect(X_test)
+    X = np.concatenate([X_train, T_train.reshape(-1, 1)], axis=1)
+    reg_r = LGBMClassifier(verbose=-1)
+    reg_r.fit(X, y_r_train)
+    reg_c = LGBMClassifier(verbose=-1)
+    reg_c.fit(X, y_c_train)
+    X_0 = np.hstack([X_test, np.zeros((len(X_test), 1))])
+    X_1 = np.hstack([X_test, np.ones((len(X_test), 1))])
+    mu_r_0 = reg_r.predict_proba(X_0)[:, 1]
+    mu_r_1 = reg_r.predict_proba(X_1)[:, 1]
+    mu_c_0 = reg_c.predict_proba(X_0)[:, 1]
+    mu_c_1 = reg_c.predict_proba(X_1)[:, 1]
+    tau_r = mu_r_1 - mu_r_0
+    tau_c = mu_c_1 - mu_c_0
+
     roi_tpmsl = tau_r / tau_c
     scaler = MinMaxScaler()
     roi_tpmsl = scaler.fit_transform(roi_tpmsl.reshape(-1, 1)).flatten()
@@ -32,12 +40,12 @@ def main(predict_ps: bool) -> None:
     n_features = 8
     num_epochs = 50
     lr = 0.01
-    std = 0.05 * np.sqrt(2)
+    delta = 0.0
     batch_size = 128
     model_name = "Direct"
     model_params = {"input_dim": n_features}
     dataset = DatasetGenerator(
-        n_samples, n_features, std, predict_ps=predict_ps, seed=seed
+        n_samples, n_features, delta, predict_ps=predict_ps, seed=seed
     )
     dataset = dataset.generate_dataset()
     train_dataset, val_dataset, test_dataset = split_dataset(dataset)

@@ -5,6 +5,7 @@ import numpy as np
 from lightgbm import LGBMClassifier
 from numpy.typing import NDArray
 from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import train_test_split
 
 
@@ -14,20 +15,26 @@ def sigmoid(x: NDArray[np.float64]) -> NDArray[np.float64]:
 
 class DatasetGenerator:
     def __init__(
-        self, n_samples: int, n_features: int, std: float, predict_ps: bool, seed: int
+        self, n_samples: int, n_features: int, delta: float, predict_ps: bool, seed: int
     ):
         self.n_samples = n_samples
         self.n_features = n_features
-        self.std = std
+        self.delta = delta
         self.predict_ps = predict_ps
         self.seed = seed
 
-    def generate_dataset(self) -> Dict[str, NDArray[Any]]:
+    def generate_dataset(self) -> dict[str, NDArray[Any]]:
         dataset: Dict[str, NDArray[Any]] = {}
         dataset |= self.generate_feature()
         dataset |= self.generate_treatment(dataset["features"])
+        auc_score = self.calculate_auc(dataset["T"], dataset["T_prob"])
+        # import pdb; pdb.set_trace()
         if self.predict_ps:
             dataset |= self.predict_treatment(dataset["features"], dataset["T"])
+            propensity_score = dataset["T_prob_pred"]
+            rmse = self.calculate_rmse(dataset["T_prob"], dataset["T_prob_pred"])
+        else:
+            propensity_score = dataset["T_prob"]
         dataset |= self.generate_visit(dataset["features"], dataset["T"])
         dataset |= self.generate_conversion(
             dataset["features"], dataset["T"], dataset["y_c"]
@@ -35,12 +42,12 @@ class DatasetGenerator:
         dataset |= self.culculate_doubly_robust(
             dataset["features"],
             dataset["T"],
-            dataset["T_prob"],
+            propensity_score,
             dataset["y_r"],
             dataset["y_c"],
         )
         dataset |= self.culculate_ipw(
-            dataset["T"], dataset["T_prob"], dataset["y_r"], dataset["y_c"]
+            dataset["T"], propensity_score, dataset["y_r"], dataset["y_c"]
         )
 
         return dataset
@@ -66,7 +73,6 @@ class DatasetGenerator:
         #     - 0.5
         #     + np.random.normal(0, 0.5, size=len(features))
         # )
-        # T_prob = sigmoid(features[:, 2] * 10)
         T_prob = T_prob.clip(0.01, 0.99)
         T: NDArray[Any] = np.random.binomial(1, T_prob).astype(bool)
         treatment_prob = T_prob[T == 1]
@@ -89,9 +95,25 @@ class DatasetGenerator:
     ) -> Dict[str, NDArray[Any]]:
         lgb = LGBMClassifier(verbose=-1, random_state=42)
         lgb.fit(features, T)
-        T_prob = lgb.predict_proba(features)[:, 1]
-        T_prob = T_prob.clip(0.01, 0.99)
-        return {"T_prob": T_prob}
+        T_prob_pred = lgb.predict_proba(features)[:, 1]
+        T_prob_pred = T_prob_pred.clip(0.01, 0.99)
+        return {"T_prob_pred": T_prob_pred}
+
+    # T_Prob_predのAUCを計算
+    def calculate_auc(
+        self,
+        T: NDArray[Any],
+        T_prob_pred: NDArray[Any],
+    ) -> float:
+        return float(roc_auc_score(T, T_prob_pred))
+
+    # T_ProbとT_Prob_predのRMSEを計算
+    def calculate_rmse(
+        self,
+        T_prob: NDArray[Any],
+        T_prob_pred: NDArray[Any],
+    ) -> float:
+        return float(np.sqrt(np.mean((T_prob - T_prob_pred) ** 2)))
 
     def generate_visit(
         self,
@@ -99,23 +121,20 @@ class DatasetGenerator:
         T: NDArray[Any],
     ) -> Dict[str, NDArray[Any]]:
         np.random.seed(self.seed)
-        noise = np.random.normal(0, self.std, size=len(features))
-        interaction_effects = np.exp(features[:, 0]) * 0.2  # 交互作用効果を現実的に
-        baseline_effect = (
-            0.2 + features[:, 2] + features[:, 4]
-        )  # 基本効果を現実的に
-        treatment_effect = T * (0.1 + interaction_effects)  # 治療効果を現実的に
+        interaction_effects = np.exp(features[:, 0] + features[:, 3]) * 0.2
+        baseline_effect = 0.2 + features[:, 2] + features[:, 4]
+        treatment_effect = T * interaction_effects
+        std = self.delta * np.sqrt(np.pi / 2)
+        noise = np.random.normal(0, std, size=len(features))
         prob_visit = np.clip(
             sigmoid(baseline_effect + treatment_effect) + noise,
             0.05,
             0.95,
         )
         visit = np.random.binomial(1, prob_visit)
-
         plt.clf()
         plt.hist(prob_visit, bins=20, alpha=0.5, label="Visit")
         plt.savefig("visit_prob.png")
-        # import pdb; pdb.set_trace()
         return {"y_c": visit}
 
     def generate_conversion(
@@ -125,10 +144,12 @@ class DatasetGenerator:
         visit: NDArray[Any],
     ) -> Dict[str, NDArray[Any]]:
         np.random.seed(self.seed)
-        noise = np.random.normal(0, self.std, size=len(features))
-        interaction_effects_purchase = np.exp(features[:, 1]) * 0.2
+        noise = np.random.normal(0, self.delta, size=len(features))
+        interaction_effects_purchase = np.exp(features[:, 1] + features[:, 6]) * 0.2
         baseline_effect_purchase = 0.1 + features[:, 5] + features[:, 7]
-        treatment_effect_purchase = T * (0.05 + interaction_effects_purchase)
+        treatment_effect_purchase = T * interaction_effects_purchase
+        std = self.delta * np.sqrt(np.pi / 2)
+        noise = np.random.normal(0, std, size=len(features))
         prob_purchase = np.clip(
             sigmoid(baseline_effect_purchase + treatment_effect_purchase) + noise,
             0.10,
