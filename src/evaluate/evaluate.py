@@ -99,10 +99,10 @@ def cost_curve(
         return difference
 
     # 0から1まで積分
-    area, error = quad(area_above_y_equals_x, 0, 1)
-    print(
-        f"The area above y = x is approximately {area:.4f}, with an error of {error:.4e}."
-    )
+    # area, error = quad(area_above_y_equals_x, 0, 1)
+    # print(
+    #     f"The area above y = x is approximately {area:.4f}, with an error of {error:.4e}."
+    # )
 
 
 # # 例として適用するデータ

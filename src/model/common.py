@@ -28,12 +28,21 @@ def make_loader(
     collator = None
     ds: Dataset  # type: ignore
     if model_name == "SLearner":
-        ds = SlearnerDataset(
-            X=dataset["features"],
-            T=dataset["T"],
-            y=dataset["y"],
-            seed=seed,
-        )
+        if method == "revenue":
+            ds = SlearnerDataset(
+                X=dataset["features"],
+                T=dataset["T"],
+                y=dataset["y_r"],
+                seed=seed,
+            )
+        elif method == "cost":
+            ds = SlearnerDataset(
+                X=dataset["features"],
+                T=dataset["T"],
+                y=dataset["y_c"],
+                seed=seed,
+            )
+
     elif model_name == "Direct":
         if train_flg:
             if method == "DR":

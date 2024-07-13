@@ -29,8 +29,9 @@ class SlearnerDataset(Dataset):  # type: ignore
     def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
         X = torch.tensor(self.X[idx], dtype=torch.float32)
         if self.T is not None:
-            T = torch.tensor(self.T[idx], dtype=torch.float32)
-            X = torch.cat([X, T])
+            T = torch.tensor([self.T[idx]], dtype=torch.float32)
+            X = torch.cat([X, T], dim=0)
+
         data = {"X": X}
         if self.y is not None:
             y = torch.tensor(self.y[idx], dtype=torch.float32)
@@ -42,18 +43,30 @@ class SlearnerDataset(Dataset):  # type: ignore
 class SLearnerNonLinear(nn.Module):
     def __init__(self, input_dim: int) -> None:
         super(SLearnerNonLinear, self).__init__()
-        self.fc1 = nn.Linear(input_dim, 2 * input_dim)
-        self.fc2 = nn.Linear(2 * input_dim, input_dim)
-        self.fc3 = nn.Linear(input_dim, int(0.5 * input_dim))
-        self.fc4 = nn.Linear(int(0.5 * input_dim), 1)
+        self.mlp = nn.Sequential(
+            nn.Linear(input_dim, 2 * input_dim),
+            nn.ReLU(),
+            nn.Dropout(0.05),
+            nn.Linear(2 * input_dim, input_dim),
+            nn.ReLU(),
+            nn.Dropout(0.05),
+            nn.Linear(input_dim, int(0.5 * input_dim)),
+            nn.ReLU(),
+            nn.Dropout(0.05),
+            nn.Linear(int(0.5 * input_dim), 1),  # Sigmoidを削除
+        )
         self.criterion = nn.BCEWithLogitsLoss()
 
-    def forward(self, x: torch.Tensor, y: Optional[torch.Tensor] = None) -> dict:
-        x = torch.relu(self.fc1(x))
-        x = torch.relu(self.fc2(x))
-        x = torch.relu(self.fc3(x))
-        x = self.fc4(x)
+    def forward(
+        self, X: torch.Tensor, y: Optional[torch.Tensor] = None
+    ) -> dict[str, torch.Tensor]:
+        pred = self.mlp(X).squeeze()
         if y is not None:
-            return {"pred": x, "loss": self.criterion(x, y)}
+            return {"pred": pred, "loss": self.criterion(pred, y)}
         else:
-            return {"pred": x}
+            X_1 = torch.cat([X, torch.ones((X.size(0), 1))], dim=1)
+            X_0 = torch.cat([X, torch.zeros((X.size(0), 1))], dim=1)
+            mu_1 = self.mlp(X_1)
+            mu_0 = self.mlp(X_0)
+            tau = mu_1 - mu_0
+            return {"pred": tau}

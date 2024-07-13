@@ -33,6 +33,7 @@ class DatasetGenerator:
         else:
             propensity_score = dataset["T_prob"]
         # rmse = self.calculate_rmse(dataset["T_prob"], propensity_score)
+        # import pdb; pdb.set_trace()
         dataset |= self.generate_visit(dataset["features"], dataset["T"])
         dataset |= self.generate_conversion(
             dataset["features"], dataset["T"], dataset["y_c"]
@@ -126,11 +127,13 @@ class DatasetGenerator:
         # import pdb
 
         # pdb.set_trace()
-        true_tau_c = sigmoid(baseline_effect + interaction_effect - a) - sigmoid(
-            baseline_effect - a
-        )
+        true_mu_c_1 = sigmoid(baseline_effect + interaction_effect - a) + noise
+        true_mu_c_0 = sigmoid(baseline_effect - a) + noise
+        true_tau_c = true_mu_c_1 - true_mu_c_0
         return {
             "y_c": visit,
+            "true_mu_c_1": true_mu_c_1,
+            "true_mu_c_0": true_mu_c_0,
             "true_tau_c": true_tau_c,
         }
 
@@ -158,10 +161,17 @@ class DatasetGenerator:
         plt.hist(prob_purchase, bins=20, alpha=0.5, label="Purchase")
         plt.savefig("purchase_prob.png")
         # import pdb; pdb.set_trace()
-        true_tau_r = sigmoid(baseline_effect_purchase + interaction_effect_purchase - a) - sigmoid(
-            baseline_effect_purchase - a
+        true_mu_r_1 = (
+            sigmoid(baseline_effect_purchase + interaction_effect_purchase - a) + noise
         )
-        return {"y_r": purchase, "true_tau_r": true_tau_r}
+        true_mu_r_0 = sigmoid(baseline_effect_purchase - a) + noise
+        true_tau_r = true_mu_r_1 - true_mu_r_0
+        return {
+            "y_r": purchase,
+            "true_mu_r_1": true_mu_r_1,
+            "true_mu_r_0": true_mu_r_0,
+            "true_tau_r": true_tau_r,
+        }
 
     def culculate_doubly_robust(
         self,
@@ -204,8 +214,10 @@ class DatasetGenerator:
         )
         doubly_robust["y_c_dr"] = np.where(
             T == 1,
-            (y_c - mu_c_1.predict_proba(features)[:, 1]) / T_prob + mu_c_1.predict_proba(features)[:, 1],
-            (y_c - mu_c_0.predict_proba(features)[:, 1]) / (1 - T_prob) + mu_c_0.predict_proba(features)[:, 1],
+            (y_c - mu_c_1.predict_proba(features)[:, 1]) / T_prob
+            + mu_c_1.predict_proba(features)[:, 1],
+            (y_c - mu_c_0.predict_proba(features)[:, 1]) / (1 - T_prob)
+            + mu_c_0.predict_proba(features)[:, 1],
         )
         return doubly_robust
 
