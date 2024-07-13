@@ -4,7 +4,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 from lightgbm import LGBMClassifier
 from numpy.typing import NDArray
-from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import train_test_split
 
@@ -27,14 +26,13 @@ class DatasetGenerator:
         dataset: Dict[str, NDArray[Any]] = {}
         dataset |= self.generate_feature()
         dataset |= self.generate_treatment(dataset["features"])
-        auc_score = self.calculate_auc(dataset["T"], dataset["T_prob"])
-        # import pdb; pdb.set_trace()
+        # auc_score = self.calculate_auc(dataset["T"], dataset["T_prob"])
         if self.predict_ps:
             dataset |= self.predict_treatment(dataset["features"], dataset["T"])
             propensity_score = dataset["T_prob_pred"]
-            rmse = self.calculate_rmse(dataset["T_prob"], dataset["T_prob_pred"])
         else:
             propensity_score = dataset["T_prob"]
+        # rmse = self.calculate_rmse(dataset["T_prob"], propensity_score)
         dataset |= self.generate_visit(dataset["features"], dataset["T"])
         dataset |= self.generate_conversion(
             dataset["features"], dataset["T"], dataset["y_c"]
@@ -59,20 +57,9 @@ class DatasetGenerator:
 
     def generate_treatment(self, features: NDArray[Any]) -> Dict[str, NDArray[Any]]:
         np.random.seed(self.seed)
-        logistic_model = LogisticRegression(max_iter=1000)
-        target = (
-            np.dot(features, np.random.uniform(0.1, 0.5, size=features.shape[1]))
-            - 0.5
-            + np.random.normal(0, 0.5, size=len(features))
-            > 0
-        ).astype(int)
-        logistic_model.fit(features, target)
-        T_prob = logistic_model.predict_proba(features)[:, 1]
-        # T_prob = sigmoid(
-        #     np.dot(features, np.random.uniform(0.1, 0.5, size=features.shape[1]))
-        #     - 0.5
-        #     + np.random.normal(0, 0.5, size=len(features))
-        # )
+        T_prob = sigmoid(
+            np.sum(features, axis=1) - 1 + np.random.normal(0, 0.5, size=len(features))
+        )
         T_prob = T_prob.clip(0.01, 0.99)
         T: NDArray[Any] = np.random.binomial(1, T_prob).astype(bool)
         treatment_prob = T_prob[T == 1]
@@ -119,15 +106,15 @@ class DatasetGenerator:
         self,
         features: NDArray[Any],
         T: NDArray[Any],
-    ) -> Dict[str, NDArray[Any]]:
+    ) -> dict[str, NDArray[Any]]:
         np.random.seed(self.seed)
-        interaction_effects = np.exp(features[:, 0] + features[:, 3]) * 0.2
+        interaction_effect = np.exp(1 * (features[:, 0] + features[:, 3]))
         baseline_effect = 0.2 + features[:, 2] + features[:, 4]
-        treatment_effect = T * interaction_effects
+        treatment_effect = T * interaction_effect
         std = self.delta * np.sqrt(np.pi / 2)
         noise = np.random.normal(0, std, size=len(features))
         prob_visit = np.clip(
-            sigmoid(baseline_effect + treatment_effect) + noise,
+            sigmoid(baseline_effect + treatment_effect - 1.0) + noise,
             0.05,
             0.95,
         )
@@ -135,7 +122,16 @@ class DatasetGenerator:
         plt.clf()
         plt.hist(prob_visit, bins=20, alpha=0.5, label="Visit")
         plt.savefig("visit_prob.png")
-        return {"y_c": visit}
+        # import pdb
+
+        # pdb.set_trace()
+        true_tau_c = sigmoid(baseline_effect + interaction_effect - 1.0) - sigmoid(
+            baseline_effect - 1.0
+        )
+        return {
+            "y_c": visit,
+            "true_tau_c": true_tau_c,
+        }
 
     def generate_conversion(
         self,
@@ -145,13 +141,13 @@ class DatasetGenerator:
     ) -> Dict[str, NDArray[Any]]:
         np.random.seed(self.seed)
         noise = np.random.normal(0, self.delta, size=len(features))
-        interaction_effects_purchase = np.exp(features[:, 1] + features[:, 6]) * 0.2
+        interaction_effect_purchase = np.exp(1 * (features[:, 1] + features[:, 6]))
         baseline_effect_purchase = 0.1 + features[:, 5] + features[:, 7]
-        treatment_effect_purchase = T * interaction_effects_purchase
+        treatment_effect_purchase = T * interaction_effect_purchase
         std = self.delta * np.sqrt(np.pi / 2)
         noise = np.random.normal(0, std, size=len(features))
         prob_purchase = np.clip(
-            sigmoid(baseline_effect_purchase + treatment_effect_purchase) + noise,
+            sigmoid(baseline_effect_purchase + treatment_effect_purchase - 1) + noise,
             0.10,
             0.90,
         )
@@ -160,7 +156,10 @@ class DatasetGenerator:
         plt.hist(prob_purchase, bins=20, alpha=0.5, label="Purchase")
         plt.savefig("purchase_prob.png")
         # import pdb; pdb.set_trace()
-        return {"y_r": purchase}
+        true_tau_r = sigmoid(baseline_effect_purchase + interaction_effect_purchase - 1) - sigmoid(
+            baseline_effect_purchase - 1
+        )
+        return {"y_r": purchase, "true_tau_r": true_tau_r}
 
     def culculate_doubly_robust(
         self,

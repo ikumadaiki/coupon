@@ -39,7 +39,7 @@ def main(predict_ps: bool) -> None:
     n_samples = 100_000
     n_features = 8
     num_epochs = 50
-    lr = 0.01
+    lr = 0.001
     delta = 0.0
     batch_size = 128
     model_name = "Direct"
@@ -50,9 +50,9 @@ def main(predict_ps: bool) -> None:
     dataset = dataset.generate_dataset()
     train_dataset, val_dataset, test_dataset = split_dataset(dataset)
     model = get_model(model_name=model_name, model_params=model_params)
-    method_list: list = ["DR",
-                         "IPW",
-                         "Direct"
+    method_list: list = ["DR", 
+                        #  "IPW", 
+                        #  "Direct"
                          ]
     roi_dic = {}
     for method in method_list:
@@ -93,10 +93,11 @@ def main(predict_ps: bool) -> None:
         test_dataset["features"],
     )
     roi_dic["TPMSL"] = roi_tpmsl
+    roi_dic["Optimal"] = test_dataset["true_tau_r"] / test_dataset["true_tau_c"]
     plt.clf()
     for roi in roi_dic:
         incremental_costs, incremental_values = calculate_values(
-            roi_dic[roi], test_dataset["T"], test_dataset["y_r"], test_dataset["y_c"]
+            roi_dic[roi], test_dataset["true_tau_r"], test_dataset["true_tau_c"]
         )
         cost_curve(incremental_costs, incremental_values, label=roi)
 
