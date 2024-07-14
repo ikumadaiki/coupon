@@ -28,11 +28,11 @@ class SlearnerDataset(Dataset):  # type: ignore
 
     def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
         X = torch.tensor(self.X[idx], dtype=torch.float32)
+        data = {"X": X}
         if self.T is not None:
             T = torch.tensor([self.T[idx]], dtype=torch.float32)
-            X = torch.cat([X, T], dim=0)
+            data["T"] = T
 
-        data = {"X": X}
         if self.y is not None:
             y = torch.tensor(self.y[idx], dtype=torch.float32)
             data["y"] = y
@@ -59,9 +59,10 @@ class SLearnerNonLinear(nn.Module):
         self.criterion = nn.BCEWithLogitsLoss()
 
     def forward(
-        self, X: torch.Tensor, y: Optional[torch.Tensor] = None
+        self, X: torch.Tensor, T: Optional[torch.Tensor]=None ,y: Optional[torch.Tensor] = None
     ) -> dict[str, torch.Tensor]:
-        if y is not None:
+        if T is not None and y is not None:
+            X = torch.cat([X, T], dim=1)
             pred = self.mlp(X).squeeze()
             return {"pred": pred, "loss": self.criterion(pred, y)}
         else:

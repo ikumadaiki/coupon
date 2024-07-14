@@ -59,7 +59,8 @@ class DatasetGenerator:
     def generate_treatment(self, features: NDArray[Any]) -> Dict[str, NDArray[Any]]:
         np.random.seed(self.seed)
         T_prob = sigmoid(
-            np.sum(features, axis=1) - 1 + np.random.normal(0, 0.5, size=len(features))
+            np.sum(features, axis=1) - 0.5
+            # + np.random.normal(0, 0.5, size=len(features))
         )
         T_prob = T_prob.clip(0.01, 0.99)
         T: NDArray[Any] = np.random.binomial(1, T_prob).astype(bool)
@@ -120,7 +121,7 @@ class DatasetGenerator:
         noise = np.random.normal(0, std, size=len(features))
         a = 4.0
         prob_visit = np.clip(
-            sigmoid((baseline_effect + treatment_effect - a) / 2) + noise,
+            sigmoid((baseline_effect + treatment_effect - a) / 1) + noise,
             0.05,
             0.85,
         )
@@ -134,6 +135,7 @@ class DatasetGenerator:
         true_mu_c_1 = sigmoid(baseline_effect + interaction_effect - a) + noise
         true_mu_c_0 = sigmoid(baseline_effect - a) + noise
         true_tau_c = true_mu_c_1 - true_mu_c_0
+
         return {
             "y_c": visit,
             "true_mu_c_1": true_mu_c_1,
@@ -155,7 +157,7 @@ class DatasetGenerator:
         noise = np.random.normal(0, std, size=len(features))
         a = 4.0
         prob_purchase = np.clip(
-            sigmoid((baseline_effect_purchase + treatment_effect_purchase - a) / 2)
+            sigmoid((baseline_effect_purchase + treatment_effect_purchase - a) / 1)
             + noise,
             0.00,
             0.80,
@@ -223,6 +225,7 @@ class DatasetGenerator:
             (y_c - mu_c_0.predict_proba(features)[:, 1]) / (1 - T_prob)
             + mu_c_0.predict_proba(features)[:, 1],
         )
+
         return doubly_robust
 
     def culculate_ipw(
