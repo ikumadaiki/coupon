@@ -14,9 +14,9 @@ class SlearnerDataset(Dataset):  # type: ignore
     def __init__(
         self,
         X: NDArray[Any],
-        T: Optional[NDArray[Any]],
-        y: Optional[NDArray[Any]],
-        seed: int,
+        T: Optional[NDArray[Any]]=None,
+        y: Optional[NDArray[Any]]=None,
+        seed: int=42,
     ) -> None:
         np.random.seed(seed)
         self.X = X
@@ -53,15 +53,16 @@ class SLearnerNonLinear(nn.Module):
             nn.Linear(input_dim, int(0.5 * input_dim)),
             nn.ReLU(),
             nn.Dropout(0.05),
-            nn.Linear(int(0.5 * input_dim), 1),  # Sigmoidを削除
+            nn.Linear(int(0.5 * input_dim), 1), 
+            nn.Sigmoid(),
         )
         self.criterion = nn.BCEWithLogitsLoss()
 
     def forward(
         self, X: torch.Tensor, y: Optional[torch.Tensor] = None
     ) -> dict[str, torch.Tensor]:
-        pred = self.mlp(X).squeeze()
         if y is not None:
+            pred = self.mlp(X).squeeze()
             return {"pred": pred, "loss": self.criterion(pred, y)}
         else:
             X_1 = torch.cat([X, torch.ones((X.size(0), 1))], dim=1)

@@ -109,8 +109,8 @@ class DatasetGenerator:
         T: NDArray[Any],
     ) -> dict[str, NDArray[Any]]:
         np.random.seed(self.seed)
-        interaction_effect = np.exp(1 * (features[:, 0] + features[:, 3]))
-        baseline_effect = 0.2 + features[:, 2] + features[:, 4]
+        interaction_effect = np.exp(features[:, 0] + features[:, 1])
+        baseline_effect = np.sum(features, axis=1)
         treatment_effect = T * interaction_effect
         std = self.delta * np.sqrt(np.pi / 2)
         noise = np.random.normal(0, std, size=len(features))
@@ -145,8 +145,8 @@ class DatasetGenerator:
     ) -> Dict[str, NDArray[Any]]:
         np.random.seed(self.seed)
         noise = np.random.normal(0, self.delta, size=len(features))
-        interaction_effect_purchase = np.exp(1 * (features[:, 1] + features[:, 6]))
-        baseline_effect_purchase = 0.1 + features[:, 5] + features[:, 7]
+        interaction_effect_purchase = np.exp(features[:, 2] + features[:, 3])
+        baseline_effect_purchase = np.sum(features, axis=1)
         treatment_effect_purchase = T * interaction_effect_purchase
         std = self.delta * np.sqrt(np.pi / 2)
         noise = np.random.normal(0, std, size=len(features))

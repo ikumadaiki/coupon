@@ -29,20 +29,31 @@ def make_loader(
     ds: Dataset  # type: ignore
     if model_name == "SLearner":
         if method == "revenue":
-            ds = SlearnerDataset(
-                X=dataset["features"],
-                T=dataset["T"],
-                y=dataset["y_r"],
-                seed=seed,
-            )
+            if train_flg:
+                ds = SlearnerDataset(
+                    X=dataset["features"],
+                    T=dataset["T"],
+                    y=dataset["y_r"],
+                    seed=seed,
+                )
+            else:
+                ds = SlearnerDataset(
+                    X=dataset["features"],
+                    seed=seed,
+                )
         elif method == "cost":
-            ds = SlearnerDataset(
-                X=dataset["features"],
-                T=dataset["T"],
-                y=dataset["y_c"],
-                seed=seed,
-            )
-
+            if train_flg:
+                ds = SlearnerDataset(
+                    X=dataset["features"],
+                    T=dataset["T"],
+                    y=dataset["y_c"],
+                    seed=seed,
+                )
+            else:
+                ds = SlearnerDataset(
+                    X=dataset["features"],
+                    seed=seed,
+                )
     elif model_name == "Direct":
         if train_flg:
             if method == "DR":

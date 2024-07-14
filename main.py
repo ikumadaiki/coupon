@@ -45,7 +45,7 @@ def main(predict_ps: bool) -> None:
     seed = 42
     n_samples = 100_000
     n_features = 8
-    num_epochs = 50
+    num_epochs = 30
     lr = 0.005
     delta = 0.0
     batch_size = 128
@@ -61,6 +61,7 @@ def main(predict_ps: bool) -> None:
                          "IPW", 
                          "Direct"
                          ]
+    # method_list = []
     roi_dic = {}
     for method in method_list:
         train_dl = make_loader(
@@ -92,11 +93,11 @@ def main(predict_ps: bool) -> None:
         trainer.save_model(model, "model.pth")
         predictions = trainer.predict(dl=test_dl, model=model).squeeze()
         roi_dic[method] = predictions
-    # roi_tpmsl = get_roi_tpmsl(
-    #     train_dataset,
-    #     test_dataset,
-    # )
-    # roi_dic["TPMSL"] = roi_tpmsl
+    roi_tpmsl = get_roi_tpmsl(
+        train_dataset,
+        test_dataset,
+    )
+    roi_dic["TPMSL_LGBM"] = roi_tpmsl
     model_name = "SLearner"
     model_params = {"input_dim": n_features + 1}
     model = get_model(model_name=model_name, model_params=model_params)
@@ -132,7 +133,7 @@ def main(predict_ps: bool) -> None:
         trainer.save_model(model, "model.pth")
         predictions = trainer.predict(dl=test_dl, model=model).squeeze()
         prediction_sl[method] = predictions
-    roi_dic["TPMSL"] = prediction_sl["revenue"] / prediction_sl["cost"]
+    roi_dic["TPMSL"] = prediction_sl["revenue"] / (prediction_sl["cost"] + 1e6)
     scaler = MinMaxScaler()
     roi_dic["TPMSL"] = scaler.fit_transform(roi_dic["TPMSL"].reshape(-1, 1)).flatten()
     roi_dic["Optimal"] = test_dataset["true_tau_r"] / test_dataset["true_tau_c"]
