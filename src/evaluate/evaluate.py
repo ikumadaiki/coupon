@@ -96,13 +96,12 @@ def cost_curve(
     # y = x 関数との差を積分（y = x より上の部分のみ）
     def area_above_y_equals_x(x: float) -> float:
         difference = curve_function(x) - x
-        return difference
+        return float(difference)
 
-    # 0から1まで積分
-    # area, error = quad(area_above_y_equals_x, 0, 1)
-    # print(
-    #     f"The area above y = x is approximately {area:.4f}, with an error of {error:.4e}."
-    # )
+    area, error = quad(area_above_y_equals_x, 0, 1)
+    print(
+        f"The area above y = x is approximately {area:.4f}, with an error of {error:.4e}."
+    )
 
 
 # # 例として適用するデータ

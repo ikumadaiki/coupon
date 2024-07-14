@@ -109,16 +109,20 @@ class DatasetGenerator:
         T: NDArray[Any],
     ) -> dict[str, NDArray[Any]]:
         np.random.seed(self.seed)
-        interaction_effect = np.exp(features[:, 0] + features[:, 1])
-        baseline_effect = np.sum(features, axis=1)
+        interaction_effect = np.exp(
+            features[:, 0] + features[:, 1] + features[:, 2] + features[:, 3]
+        )
+        baseline_effect = (
+            features[:, 4] + features[:, 5] + features[:, 6] + features[:, 7]
+        )
         treatment_effect = T * interaction_effect
         std = self.delta * np.sqrt(np.pi / 2)
         noise = np.random.normal(0, std, size=len(features))
-        a = 2.0
+        a = 4.0
         prob_visit = np.clip(
-            sigmoid(baseline_effect + treatment_effect - a) + noise,
+            sigmoid((baseline_effect + treatment_effect - a) / 2) + noise,
             0.05,
-            0.95,
+            0.85,
         )
         visit = np.random.binomial(1, prob_visit)
         plt.clf()
@@ -144,17 +148,17 @@ class DatasetGenerator:
         visit: NDArray[Any],
     ) -> Dict[str, NDArray[Any]]:
         np.random.seed(self.seed)
-        noise = np.random.normal(0, self.delta, size=len(features))
-        interaction_effect_purchase = np.exp(features[:, 2] + features[:, 3])
-        baseline_effect_purchase = np.sum(features, axis=1)
+        interaction_effect_purchase = np.exp(features[:, 0] + features[:, 1])
+        baseline_effect_purchase = features[:, 4] + features[:, 5]
         treatment_effect_purchase = T * interaction_effect_purchase
         std = self.delta * np.sqrt(np.pi / 2)
         noise = np.random.normal(0, std, size=len(features))
-        a = 2.0
+        a = 4.0
         prob_purchase = np.clip(
-            sigmoid(baseline_effect_purchase + treatment_effect_purchase - a) + noise,
-            0.10,
-            0.90,
+            sigmoid((baseline_effect_purchase + treatment_effect_purchase - a) / 2)
+            + noise,
+            0.00,
+            0.80,
         )
         purchase = np.where(visit == 1, np.random.binomial(1, prob_purchase), 0)
         plt.clf()

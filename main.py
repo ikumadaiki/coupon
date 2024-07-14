@@ -45,9 +45,9 @@ def main(predict_ps: bool) -> None:
     seed = 42
     n_samples = 100_000
     n_features = 8
-    num_epochs = 30
-    lr = 0.005
-    delta = 0.0
+    num_epochs = 50
+    lr = 0.001
+    delta = 0.2
     batch_size = 128
     model_name = "Direct"
     model_params = {"input_dim": n_features}
