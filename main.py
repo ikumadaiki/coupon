@@ -66,7 +66,7 @@ def main(predict_ps: bool) -> None:
     model = get_model(model_name=model_name, model_params=model_params)
     method_list: list = ["DR", "IPW", "Direct"]
     # method_list = method_list[:2]
-    # method_list = []
+    method_list = []
     roi_dic = {}
     for method in method_list:
         train_dl = make_loader(
@@ -106,9 +106,10 @@ def main(predict_ps: bool) -> None:
     model_name = "SLearner"
     model_params = {"input_dim": n_features + 1}
     model = get_model(model_name=model_name, model_params=model_params)
-    method_list: list = ["revenue", "cost"]
+    method_list: list = ["cost", "revenue"]
     prediction_sl: dict[str, NDArray[np.float64]] = {}
-    num_epochs = 20
+    # num_epochs = 50
+    # lr = 0.00005
     for method in method_list:
         train_dl = make_loader(
             train_dataset,
@@ -139,7 +140,8 @@ def main(predict_ps: bool) -> None:
         trainer.save_model(model, "model.pth")
         predictions = trainer.predict(dl=test_dl, model=model).squeeze()
         prediction_sl[method] = predictions
-    roi_dic["TPMSL"] = prediction_sl["revenue"] / (prediction_sl["cost"] + 1e6)
+    import pdb; pdb.set_trace()
+    roi_dic["TPMSL"] = prediction_sl["revenue"] / (prediction_sl["cost"] + 1e-6)
     scaler = MinMaxScaler()
     roi_dic["TPMSL"] = scaler.fit_transform(roi_dic["TPMSL"].reshape(-1, 1)).flatten()
     roi_dic["Optimal"] = test_dataset["true_tau_r"] / test_dataset["true_tau_c"]
@@ -152,4 +154,4 @@ def main(predict_ps: bool) -> None:
 
 
 if __name__ == "__main__":
-    main(predict_ps=False)
+    main(predict_ps=True)

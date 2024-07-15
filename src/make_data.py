@@ -32,7 +32,8 @@ class DatasetGenerator:
             propensity_score = dataset["T_prob_pred"]
         else:
             propensity_score = dataset["T_prob"]
-        # rmse = self.calculate_rmse(dataset["T_prob"], propensity_score)
+        rmse = self.calculate_rmse(dataset["T_prob"], propensity_score)
+        print("RMSE: ", rmse)
         # import pdb; pdb.set_trace()
         dataset |= self.generate_visit(dataset["features"], dataset["T"])
         dataset |= self.generate_conversion(
