@@ -38,10 +38,13 @@ def get_roi_tpmsl(
     mu_c_1 = reg_c.predict_proba(X_1)[:, 1]
     tau_r = mu_r_1 - mu_r_0
     tau_c = mu_c_1 - mu_c_0
-
+    rmse_tau_r = np.sqrt(np.mean((test_dataset["true_tau_r"] - tau_r) ** 2))
+    rmse_tau_c = np.sqrt(np.mean((test_dataset["true_tau_c"] - tau_c) ** 2))
     roi_tpmsl = tau_r / tau_c
     scaler = MinMaxScaler()
     roi_tpmsl = scaler.fit_transform(roi_tpmsl.reshape(-1, 1)).flatten()
+    rmse_roi = np.sqrt(np.mean((test_dataset["true_ROI"] - roi_tpmsl) ** 2))
+    # import pdb; pdb.set_trace()
     return roi_tpmsl
 
 
@@ -62,7 +65,7 @@ def main(predict_ps: bool) -> None:
     train_dataset, val_dataset, test_dataset = split_dataset(dataset)
     model = get_model(model_name=model_name, model_params=model_params)
     method_list: list = ["DR", "IPW", "Direct"]
-    method_list = method_list[:1]
+    # method_list = method_list[:2]
     # method_list = []
     roi_dic = {}
     for method in method_list:
@@ -105,6 +108,7 @@ def main(predict_ps: bool) -> None:
     model = get_model(model_name=model_name, model_params=model_params)
     method_list: list = ["revenue", "cost"]
     prediction_sl: dict[str, NDArray[np.float64]] = {}
+    num_epochs = 20
     for method in method_list:
         train_dl = make_loader(
             train_dataset,
@@ -148,4 +152,4 @@ def main(predict_ps: bool) -> None:
 
 
 if __name__ == "__main__":
-    main(predict_ps=True)
+    main(predict_ps=False)

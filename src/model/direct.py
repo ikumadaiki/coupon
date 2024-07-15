@@ -1,3 +1,4 @@
+import math
 from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
@@ -29,7 +30,10 @@ class TrainDirectDataset(Dataset):  # type: ignore
         # teratment_idxからcontrol_idxをランダム二つ選択する辞書を作成
         self.treatment_idx_to_control_idx = {}
         # unused_control_idx = set(list(range(len(self.X_control))))
-        self.ratio = round(len(self.X_control) / len(self.X_treated))
+        self.ratio = math.ceil(len(self.X_control) / len(self.X_treated))
+        # import pdb
+
+        # pdb.set_trace()
         ununsed_control_idx = list(range(len(self.X_control)))
         for i in range(len(self.X_treated)):
             control_idx_i = np.random.choice(
@@ -100,7 +104,6 @@ class DirectCollator:
         }
 
 
-
 class TestDirectDataset(Dataset):  # type: ignore
     def __init__(
         self,
@@ -160,15 +163,15 @@ class DirectNonLinear(nn.Module):
             return {"pred": pred}
 
     def _predict(self, x: torch.Tensor) -> torch.Tensor:
-        return self.mlp(x) # type: ignore
+        return self.mlp(x)  # type: ignore
 
 
 # 損失関数の定義
 def custom_loss(
     y_r: torch.Tensor, y_c: torch.Tensor, q: torch.Tensor, group_size: int
 ) -> torch.Tensor:
-    q = torch.clamp(q, 1e-6, 1 - 1e-6) # (N, 1)
-    logit_q = torch.log(q / (1 - q)) # (N, 1)
+    q = torch.clamp(q, 1e-6, 1 - 1e-6)  # (N, 1)
+    logit_q = torch.log(q / (1 - q))  # (N, 1)
 
     loss = -torch.sum(y_r * logit_q + y_c * torch.log(1 - q)) / group_size
     return loss
