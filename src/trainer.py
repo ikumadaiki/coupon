@@ -90,3 +90,6 @@ class Trainer:
 
     def save_model(self, model: nn.Module, path: str) -> None:
         torch.save(model.state_dict(), path)
+
+    def save_predictions(self, predictions: NDArray[Any], path: str) -> None:
+        np.save(path, predictions)

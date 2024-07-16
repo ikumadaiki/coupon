@@ -38,6 +38,10 @@ def get_roi_tpmsl(
     mu_c_1 = reg_c.predict_proba(X_1)[:, 1]
     tau_r = mu_r_1 - mu_r_0
     tau_c = mu_c_1 - mu_c_0
+    rmse_mu_r_0 = np.sqrt(np.mean((test_dataset["true_mu_r_0"] - mu_r_0) ** 2))
+    rmse_mu_r_1 = np.sqrt(np.mean((test_dataset["true_mu_r_1"] - mu_r_1) ** 2))
+    rmse_mu_c_0 = np.sqrt(np.mean((test_dataset["true_mu_c_0"] - mu_c_0) ** 2))
+    rmse_mu_c_1 = np.sqrt(np.mean((test_dataset["true_mu_c_1"] - mu_c_1) ** 2))
     rmse_tau_r = np.sqrt(np.mean((test_dataset["true_tau_r"] - tau_r) ** 2))
     rmse_tau_c = np.sqrt(np.mean((test_dataset["true_tau_c"] - tau_c) ** 2))
     roi_tpmsl = tau_r / tau_c
@@ -56,7 +60,7 @@ def main(predict_ps: bool) -> None:
     n_features = 8
     num_epochs = 50
     lr = 0.0005
-    delta = 0.0
+    delta = 0.5
     batch_size = 128
     model_name = "Direct"
     model_params = {"input_dim": n_features}
@@ -67,10 +71,11 @@ def main(predict_ps: bool) -> None:
     train_dataset, val_dataset, test_dataset = split_dataset(dataset)
     model = get_model(model_name=model_name, model_params=model_params)
     method_list: list = ["DR", "IPW", "Direct"]
-    method_list = method_list[:1]
+    # method_list = method_list[:1]
     # method_list = []
     roi_dic = {}
-    for method in method_list:
+    lr_list: list = [0.0005, 0.0001, 0.00005]
+    for i, method in enumerate(method_list):
         train_dl = make_loader(
             train_dataset,
             model_name=model_name,
@@ -95,7 +100,7 @@ def main(predict_ps: bool) -> None:
             method=method,
             seed=seed,
         )
-        trainer = Trainer(num_epochs=num_epochs, lr=lr)
+        trainer = Trainer(num_epochs=num_epochs, lr=lr_list[i])
         model = trainer.train(train_dl=train_dl, val_dl=val_dl, model=model)
         trainer.save_model(model, "model.pth")
         predictions = trainer.predict(dl=test_dl, model=model).squeeze()
@@ -110,7 +115,7 @@ def main(predict_ps: bool) -> None:
     model = get_model(model_name=model_name, model_params=model_params)
     method_list: list = ["cost", "revenue"]
     prediction_sl: dict[str, NDArray[np.float64]] = {}
-    num_epochs = 30
+    num_epochs = 50
     lr = 0.00001
     for method in method_list:
         train_dl = make_loader(
