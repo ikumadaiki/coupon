@@ -148,9 +148,9 @@ class DirectNonLinear(nn.Module):
             q_treated = pred[:treated_size]
             y_r_treated = y_r[:treated_size]
             y_c_treated = y_c[:treated_size]
+            q_control = pred[treated_size:]
             y_r_control = y_r[treated_size:]
             y_c_control = y_c[treated_size:]
-            q_control = pred[treated_size:]
 
             loss_1 = custom_loss(y_r_treated, y_c_treated, q_treated, q_treated.size(0))
 

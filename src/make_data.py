@@ -34,7 +34,6 @@ class DatasetGenerator:
             propensity_score = dataset["T_prob"]
         rmse = self.calculate_rmse(dataset["T_prob"], propensity_score)
         print("RMSE: ", rmse)
-        # import pdb; pdb.set_trace()
         dataset |= self.generate_visit(dataset["features"], dataset["T"])
         dataset |= self.generate_conversion(
             dataset["features"], dataset["T"], dataset["y_c"]
@@ -50,6 +49,9 @@ class DatasetGenerator:
             dataset["T"], propensity_score, dataset["y_r"], dataset["y_c"]
         )
         dataset["true_ROI"] = dataset["true_tau_r"] / dataset["true_tau_c"]
+        import pdb
+
+        pdb.set_trace()
 
         return dataset
 
@@ -116,18 +118,19 @@ class DatasetGenerator:
         T: NDArray[Any],
     ) -> dict[str, NDArray[Any]]:
         np.random.seed(self.seed)
+        baseline_effect = np.dot(
+            features[:, 4:], np.random.uniform(0.8, 1.2, self.n_features - 4)
+        )
         interaction_effect = np.exp(
             np.dot(features[:, :4], np.random.uniform(0.8, 1.2, 4))
-        )
-        baseline_effect = (
-            np.dot(features[:, 4:], np.random.uniform(0.8, 1.2, self.n_features - 4))
+            + features[:, 0]
         )
         treatment_effect = T * interaction_effect
         std = self.delta * np.sqrt(np.pi / 2)
         noise = np.random.normal(0, std, size=len(features))
-        a = 4.0
+        a = 7.0
         prob_visit = np.clip(
-            sigmoid((baseline_effect + treatment_effect - a) / 1.5) + noise,
+            sigmoid((baseline_effect + treatment_effect - a) / 3.0) + noise,
             0.01,
             0.99,
         )
@@ -156,14 +159,19 @@ class DatasetGenerator:
         visit: NDArray[Any],
     ) -> Dict[str, NDArray[Any]]:
         np.random.seed(self.seed)
-        interaction_effect_purchase = np.exp(np.dot(features[:, :2], np.random.uniform(0.8, 1.2, 2)))
-        baseline_effect_purchase = np.dot(features[:, 4:6], np.random.uniform(0.8, 1.2, 2))
+        baseline_effect_purchase = np.dot(
+            features[:, 4:6], np.random.uniform(0.8, 1.2, 2)
+        )
+        interaction_effect_purchase = np.exp(
+            np.dot(features[:, :2], np.random.uniform(0.8, 1.2, 2))
+            + features[:, 0]
+        )
         treatment_effect_purchase = T * interaction_effect_purchase
         std = self.delta * np.sqrt(np.pi / 2)
         noise = np.random.normal(0, std, size=len(features))
-        a = 4.0
+        a = 7.0
         prob_purchase = np.clip(
-            sigmoid((baseline_effect_purchase + treatment_effect_purchase - a) / 1.5)
+            sigmoid((baseline_effect_purchase + treatment_effect_purchase - a) / 3.0)
             + noise,
             0.01,
             0.99,

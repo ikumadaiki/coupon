@@ -44,7 +44,9 @@ def get_roi_tpmsl(
     scaler = MinMaxScaler()
     roi_tpmsl = scaler.fit_transform(roi_tpmsl.reshape(-1, 1)).flatten()
     rmse_roi = np.sqrt(np.mean((test_dataset["true_ROI"] - roi_tpmsl) ** 2))
-    # import pdb; pdb.set_trace()
+    import pdb
+
+    pdb.set_trace()
     return roi_tpmsl
 
 
@@ -53,7 +55,7 @@ def main(predict_ps: bool) -> None:
     n_samples = 100_000
     n_features = 8
     num_epochs = 50
-    lr = 0.001
+    lr = 0.0005
     delta = 0.0
     batch_size = 128
     model_name = "Direct"
@@ -65,8 +67,8 @@ def main(predict_ps: bool) -> None:
     train_dataset, val_dataset, test_dataset = split_dataset(dataset)
     model = get_model(model_name=model_name, model_params=model_params)
     method_list: list = ["DR", "IPW", "Direct"]
-    # method_list = method_list[:2]
-    method_list = []
+    method_list = method_list[:1]
+    # method_list = []
     roi_dic = {}
     for method in method_list:
         train_dl = make_loader(
@@ -108,8 +110,8 @@ def main(predict_ps: bool) -> None:
     model = get_model(model_name=model_name, model_params=model_params)
     method_list: list = ["cost", "revenue"]
     prediction_sl: dict[str, NDArray[np.float64]] = {}
-    # num_epochs = 50
-    # lr = 0.00005
+    num_epochs = 30
+    lr = 0.00001
     for method in method_list:
         train_dl = make_loader(
             train_dataset,
@@ -140,7 +142,6 @@ def main(predict_ps: bool) -> None:
         trainer.save_model(model, "model.pth")
         predictions = trainer.predict(dl=test_dl, model=model).squeeze()
         prediction_sl[method] = predictions
-    import pdb; pdb.set_trace()
     roi_dic["TPMSL"] = prediction_sl["revenue"] / (prediction_sl["cost"] + 1e-6)
     scaler = MinMaxScaler()
     roi_dic["TPMSL"] = scaler.fit_transform(roi_dic["TPMSL"].reshape(-1, 1)).flatten()
