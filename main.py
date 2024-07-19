@@ -11,6 +11,7 @@ from src.evaluate.evaluate import calculate_values, cost_curve
 from src.make_data import DatasetGenerator, split_dataset
 from src.model.common import get_model, make_loader
 from src.trainer import Trainer
+from sklearn.metrics import roc_auc_score
 
 # NNのランダム性を固定
 torch.manual_seed(42)
@@ -44,6 +45,12 @@ def get_roi_tpmsl(
     rmse_mu_c_1 = np.sqrt(np.mean((test_dataset["true_mu_c_1"] - mu_c_1) ** 2))
     rmse_tau_r = np.sqrt(np.mean((test_dataset["true_tau_r"] - tau_r) ** 2))
     rmse_tau_c = np.sqrt(np.mean((test_dataset["true_tau_c"] - tau_c) ** 2))
+    # AUCを計算
+    # auc_mu_r_0 = roc_auc_score(np.round(np.clip(test_dataset["true_mu_r_0"], 0, 1)), mu_r_0)
+    auc_mu_r_1 = roc_auc_score(np.round(np.clip(test_dataset["true_mu_r_1"], 0, 1)), mu_r_1)
+    auc_mu_c_0 = roc_auc_score(np.round(np.clip(test_dataset["true_mu_c_0"], 0, 1)), mu_c_0)
+    auc_mu_c_1 = roc_auc_score(np.round(np.clip(test_dataset["true_mu_c_1"], 0, 1)), mu_c_1)
+
     roi_tpmsl = tau_r / tau_c
     scaler = MinMaxScaler()
     roi_tpmsl = scaler.fit_transform(roi_tpmsl.reshape(-1, 1)).flatten()
@@ -59,8 +66,7 @@ def main(predict_ps: bool) -> None:
     n_samples = 100_000
     n_features = 8
     num_epochs = 50
-    lr = 0.0005
-    delta = 0.5
+    delta = 0.1
     batch_size = 128
     model_name = "Direct"
     model_params = {"input_dim": n_features}
@@ -74,7 +80,7 @@ def main(predict_ps: bool) -> None:
     # method_list = method_list[:1]
     # method_list = []
     roi_dic = {}
-    lr_list: list = [0.0005, 0.0001, 0.00005]
+    lr_list: list = [0.001, 0.001, 0.001]
     for i, method in enumerate(method_list):
         train_dl = make_loader(
             train_dataset,
@@ -116,7 +122,7 @@ def main(predict_ps: bool) -> None:
     method_list: list = ["cost", "revenue"]
     prediction_sl: dict[str, NDArray[np.float64]] = {}
     num_epochs = 50
-    lr = 0.00001
+    lr = 0.00002
     for method in method_list:
         train_dl = make_loader(
             train_dataset,
@@ -160,4 +166,4 @@ def main(predict_ps: bool) -> None:
 
 
 if __name__ == "__main__":
-    main(predict_ps=True)
+    main(predict_ps=False)

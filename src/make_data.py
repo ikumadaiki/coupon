@@ -49,9 +49,9 @@ class DatasetGenerator:
             dataset["T"], propensity_score, dataset["y_r"], dataset["y_c"]
         )
         dataset["true_ROI"] = dataset["true_tau_r"] / dataset["true_tau_c"]
-        import pdb
+        # import pdb
 
-        pdb.set_trace()
+        # pdb.set_trace()
 
         return dataset
 
@@ -122,21 +122,33 @@ class DatasetGenerator:
             features[:, 4:], np.random.uniform(0.8, 1.2, self.n_features - 4)
         )
         interaction_effect = np.exp(
-            np.dot(features[:, :4], np.random.uniform(0.8, 1.2, 4))
-            + features[:, 0]
+            np.dot(features[:, :4], np.random.uniform(0.8, 1.2, 4)) + features[:, 4]
         )
         treatment_effect = T * interaction_effect
         std = self.delta * np.sqrt(np.pi / 2)
         noise = np.random.normal(0, std, size=len(features))
-        a = 7.0
+        a = 3.0
         prob_visit = np.clip(
-            sigmoid((baseline_effect + treatment_effect - a) / 3.0) + noise,
+            sigmoid((baseline_effect + treatment_effect - a) / 6.0) + noise,
             0.01,
             0.99,
         )
         visit = np.random.binomial(1, prob_visit)
+
+        prob_visit_treatment = np.clip(
+            sigmoid((baseline_effect + interaction_effect - a) / 6.0) + noise,
+            0.01,
+            0.99,
+        )
+        prob_visit_control = np.clip(
+            sigmoid((baseline_effect - a) / 6.0) + noise,
+            0.01,
+            0.99,
+        )
+
         plt.clf()
-        plt.hist(prob_visit, bins=20, alpha=0.5, label="Visit")
+        plt.hist(prob_visit_treatment, bins=20, alpha=0.5, label="Visit")
+        plt.hist(prob_visit_control, bins=20, alpha=0.5, label="Visit")
         plt.savefig("visit_prob.png")
         # import pdb
 
@@ -163,24 +175,37 @@ class DatasetGenerator:
             features[:, 4:6], np.random.uniform(0.8, 1.2, 2)
         )
         interaction_effect_purchase = np.exp(
-            np.dot(features[:, :2], np.random.uniform(0.8, 1.2, 2))
-            + features[:, 0]
+            np.dot(features[:, :2], np.random.uniform(0.8, 1.2, 2)) + features[:, 4]
         )
         treatment_effect_purchase = T * interaction_effect_purchase
         std = self.delta * np.sqrt(np.pi / 2)
         noise = np.random.normal(0, std, size=len(features))
-        a = 7.0
+        a = 3.0
         prob_purchase = np.clip(
-            sigmoid((baseline_effect_purchase + treatment_effect_purchase - a) / 3.0)
+            sigmoid((baseline_effect_purchase + treatment_effect_purchase - a) / 6.0)
             + noise,
+            0.01,
+            0.99,
+        )
+        prob_purchase_treatment = np.clip(
+            sigmoid((baseline_effect_purchase + interaction_effect_purchase - a) / 6.0)
+            + noise,
+            0.01,
+            0.99,
+        )
+        prob_purchase_control = np.clip(
+            sigmoid((baseline_effect_purchase - a) / 3.0) + noise,
             0.01,
             0.99,
         )
         purchase = np.where(visit == 1, np.random.binomial(1, prob_purchase), 0)
         plt.clf()
-        plt.hist(prob_purchase, bins=20, alpha=0.5, label="Purchase")
+        plt.hist(prob_purchase_treatment, bins=20, alpha=0.5, label="Purchase")
+        plt.hist(prob_purchase_control, bins=20, alpha=0.5, label="Purchase")
         plt.savefig("purchase_prob.png")
-        # import pdb; pdb.set_trace()
+        import pdb
+
+        pdb.set_trace()
         true_mu_r_1 = (
             sigmoid(baseline_effect_purchase + interaction_effect_purchase - a) + noise
         )
