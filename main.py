@@ -5,13 +5,13 @@ import numpy as np
 import torch
 from lightgbm import LGBMClassifier
 from numpy.typing import NDArray
+from sklearn.metrics import roc_auc_score
 from sklearn.preprocessing import MinMaxScaler
 
 from src.evaluate.evaluate import calculate_values, cost_curve
 from src.make_data import DatasetGenerator, split_dataset
 from src.model.common import get_model, make_loader
 from src.trainer import Trainer
-from sklearn.metrics import roc_auc_score
 
 # NNのランダム性を固定
 torch.manual_seed(42)
@@ -46,10 +46,16 @@ def get_roi_tpmsl(
     rmse_tau_r = np.sqrt(np.mean((test_dataset["true_tau_r"] - tau_r) ** 2))
     rmse_tau_c = np.sqrt(np.mean((test_dataset["true_tau_c"] - tau_c) ** 2))
     # AUCを計算
-    # auc_mu_r_0 = roc_auc_score(np.round(np.clip(test_dataset["true_mu_r_0"], 0, 1)), mu_r_0)
-    auc_mu_r_1 = roc_auc_score(np.round(np.clip(test_dataset["true_mu_r_1"], 0, 1)), mu_r_1)
-    auc_mu_c_0 = roc_auc_score(np.round(np.clip(test_dataset["true_mu_c_0"], 0, 1)), mu_c_0)
-    auc_mu_c_1 = roc_auc_score(np.round(np.clip(test_dataset["true_mu_c_1"], 0, 1)), mu_c_1)
+    auc_mu_r_0 = roc_auc_score(np.round(np.clip(test_dataset["true_mu_r_0"], 0, 1)), mu_r_0)
+    auc_mu_r_1 = roc_auc_score(
+        np.round(np.clip(test_dataset["true_mu_r_1"], 0, 1)), mu_r_1
+    )
+    auc_mu_c_0 = roc_auc_score(
+        np.round(np.clip(test_dataset["true_mu_c_0"], 0, 1)), mu_c_0
+    )
+    auc_mu_c_1 = roc_auc_score(
+        np.round(np.clip(test_dataset["true_mu_c_1"], 0, 1)), mu_c_1
+    )
 
     roi_tpmsl = tau_r / tau_c
     scaler = MinMaxScaler()
@@ -63,10 +69,10 @@ def get_roi_tpmsl(
 
 def main(predict_ps: bool) -> None:
     seed = 42
-    n_samples = 100_000
-    n_features = 8
+    n_samples = 50_000
+    n_features = 6
     num_epochs = 50
-    delta = 0.1
+    delta = 0.0
     batch_size = 128
     model_name = "Direct"
     model_params = {"input_dim": n_features}
@@ -76,11 +82,11 @@ def main(predict_ps: bool) -> None:
     dataset = dataset.generate_dataset()
     train_dataset, val_dataset, test_dataset = split_dataset(dataset)
     model = get_model(model_name=model_name, model_params=model_params)
-    method_list: list = ["DR", "IPW", "Direct"]
-    # method_list = method_list[:1]
+    method_list: list = ["DR", "Direct", "IPW"]
+    method_list = method_list[:2]
     # method_list = []
     roi_dic = {}
-    lr_list: list = [0.001, 0.001, 0.001]
+    lr_list: list = [0.0001, 0.0001, 0.0005]
     for i, method in enumerate(method_list):
         train_dl = make_loader(
             train_dataset,
@@ -120,6 +126,7 @@ def main(predict_ps: bool) -> None:
     model_params = {"input_dim": n_features + 1}
     model = get_model(model_name=model_name, model_params=model_params)
     method_list: list = ["cost", "revenue"]
+    method_list = []
     prediction_sl: dict[str, NDArray[np.float64]] = {}
     num_epochs = 50
     lr = 0.00002
@@ -153,9 +160,9 @@ def main(predict_ps: bool) -> None:
         trainer.save_model(model, "model.pth")
         predictions = trainer.predict(dl=test_dl, model=model).squeeze()
         prediction_sl[method] = predictions
-    roi_dic["TPMSL"] = prediction_sl["revenue"] / (prediction_sl["cost"] + 1e-6)
-    scaler = MinMaxScaler()
-    roi_dic["TPMSL"] = scaler.fit_transform(roi_dic["TPMSL"].reshape(-1, 1)).flatten()
+    # roi_dic["TPMSL"] = prediction_sl["revenue"] / (prediction_sl["cost"] + 1e-6)
+    # scaler = MinMaxScaler()
+    # roi_dic["TPMSL"] = scaler.fit_transform(roi_dic["TPMSL"].reshape(-1, 1)).flatten()
     roi_dic["Optimal"] = test_dataset["true_tau_r"] / test_dataset["true_tau_c"]
     plt.clf()
     for roi in roi_dic:
@@ -166,4 +173,4 @@ def main(predict_ps: bool) -> None:
 
 
 if __name__ == "__main__":
-    main(predict_ps=False)
+    main(predict_ps=True)

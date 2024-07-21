@@ -125,7 +125,7 @@ class DirectNonLinear(nn.Module):
         self.mlp = nn.Sequential(
             nn.Linear(input_dim, 2 * input_dim),
             nn.ReLU(),
-            nn.Dropout(0.05),
+            nn.Dropout(0.1),
             nn.Linear(2 * input_dim, input_dim),
             nn.ReLU(),
             nn.Dropout(0.05),

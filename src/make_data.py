@@ -23,7 +23,7 @@ class DatasetGenerator:
         self.seed = seed
 
     def generate_dataset(self) -> dict[str, NDArray[Any]]:
-        dataset: Dict[str, NDArray[Any]] = {}
+        dataset: dict[str, NDArray[Any]] = {}
         dataset |= self.generate_feature()
         dataset |= self.generate_treatment(dataset["features"])
         # auc_score = self.calculate_auc(dataset["T"], dataset["T_prob"])
@@ -64,11 +64,11 @@ class DatasetGenerator:
         np.random.seed(self.seed)
         T_prob = sigmoid(
             (
-                np.dot(features, np.random.uniform(0.8, 1.2, size=self.n_features))
-                - 1.0
+                np.dot(features[:, :2], np.random.uniform(1.0, 1.5, size=2))
+                - 0.5
                 + np.random.normal(0, 0.0, size=len(features))
             )
-            / 1.5
+            / 2.0
         )
         T_prob = T_prob.clip(0.01, 0.99)
         T: NDArray[Any] = np.random.binomial(1, T_prob).astype(bool)
@@ -118,37 +118,74 @@ class DatasetGenerator:
         T: NDArray[Any],
     ) -> dict[str, NDArray[Any]]:
         np.random.seed(self.seed)
-        baseline_effect = np.dot(
-            features[:, 4:], np.random.uniform(0.8, 1.2, self.n_features - 4)
-        )
-        interaction_effect = np.exp(
-            np.dot(features[:, :4], np.random.uniform(0.8, 1.2, 4)) + features[:, 4]
-        )
+
+        def effect(features: NDArray[Any]) -> Tuple[NDArray[Any], NDArray[Any]]:
+            baseline_effect = np.dot(
+                features[:, :2], np.random.uniform(1.8, 2.3, 2)
+            )
+            interaction_effect = np.exp(
+                np.dot(features[:, 2:4], np.random.uniform(0.3, 0.5, 2))
+                + 0.4 * features[:, 0]
+            )
+            return baseline_effect, interaction_effect
+
+        baseline_effect, interaction_effect = effect(features)
         treatment_effect = T * interaction_effect
         std = self.delta * np.sqrt(np.pi / 2)
         noise = np.random.normal(0, std, size=len(features))
-        a = 3.0
+        a = 2.0
         prob_visit = np.clip(
-            sigmoid((baseline_effect + treatment_effect - a) / 6.0) + noise,
+            sigmoid((baseline_effect + treatment_effect - a) / (2 * a)) + noise,
             0.01,
             0.99,
         )
         visit = np.random.binomial(1, prob_visit)
-
+        treatment_features = features[T == 1]
+        control_features = features[T == 0]
+        baseline_effect_treatment, interaction_effect_treatment = effect(
+            treatment_features
+        )
+        baseline_effect_control, interaction_effect_control = effect(control_features)
         prob_visit_treatment = np.clip(
-            sigmoid((baseline_effect + interaction_effect - a) / 6.0) + noise,
+            sigmoid(
+                (baseline_effect_treatment + interaction_effect_treatment - a) / (2 * a)
+            )
+            + noise[: len(treatment_features)],
             0.01,
             0.99,
         )
         prob_visit_control = np.clip(
-            sigmoid((baseline_effect - a) / 6.0) + noise,
+            sigmoid((baseline_effect_control - a) / (2 * a))
+            + noise[len(treatment_features) :],
+            0.01,
+            0.99,
+        )
+        prob_visit_treatment_if_non_treatment = np.clip(
+            sigmoid((baseline_effect_treatment - a) / (2 * a))
+            + noise[: len(treatment_features)],
+            0.01,
+            0.99,
+        )
+        prpb_visit_control_if_treatment = np.clip(
+            sigmoid(
+                (baseline_effect_control + interaction_effect_control - a) / (2 * a)
+            )
+            + noise[len(treatment_features) :],
             0.01,
             0.99,
         )
 
         plt.clf()
-        plt.hist(prob_visit_treatment, bins=20, alpha=0.5, label="Visit")
-        plt.hist(prob_visit_control, bins=20, alpha=0.5, label="Visit")
+        plt.hist(prob_visit_treatment, bins=20, alpha=0.5, label="Visit_Treatment")
+        plt.hist(prob_visit_control, bins=20, alpha=0.5, label="Visit_Control")
+        plt.hist(
+            prob_visit_treatment_if_non_treatment,
+            bins=20,
+            alpha=0.5,
+            label="if_non_treatment",
+        )
+        # plt.hist(prpb_visit_control_if_treatment, bins=20, alpha=0.5, label="if_treatment")
+        plt.legend()
         plt.savefig("visit_prob.png")
         # import pdb
 
@@ -171,45 +208,71 @@ class DatasetGenerator:
         visit: NDArray[Any],
     ) -> Dict[str, NDArray[Any]]:
         np.random.seed(self.seed)
-        baseline_effect_purchase = np.dot(
-            features[:, 4:6], np.random.uniform(0.8, 1.2, 2)
-        )
-        interaction_effect_purchase = np.exp(
-            np.dot(features[:, :2], np.random.uniform(0.8, 1.2, 2)) + features[:, 4]
-        )
-        treatment_effect_purchase = T * interaction_effect_purchase
+
+        def effect(features: NDArray[Any]) -> Tuple[NDArray[Any], NDArray[Any]]:
+            baseline_effect = np.dot(features[:, 0].reshape(-1, 1), np.random.uniform(2.5, 3.0, 1))
+            interaction_effect = np.exp(
+                np.dot(features[:, 2].reshape(-1, 1), np.random.uniform(0.5, 0.7, 1))
+                + 0.4 * features[:, 0]
+            )
+            return baseline_effect, interaction_effect
+
+        baseline_effect, interaction_effect = effect(features)
+        treatment_effect = T * interaction_effect
         std = self.delta * np.sqrt(np.pi / 2)
         noise = np.random.normal(0, std, size=len(features))
-        a = 3.0
+        a = 2.0
         prob_purchase = np.clip(
-            sigmoid((baseline_effect_purchase + treatment_effect_purchase - a) / 6.0)
+            sigmoid((baseline_effect + treatment_effect - a) / (2 * a))
             + noise,
             0.01,
             0.99,
         )
+        treatment_features = features[T == 1]
+        control_features = features[T == 0]
+        baseline_effect_treatment, interaction_effect_treatment = effect(
+            treatment_features
+        )
+        baseline_effect_control, interaction_effect_control = effect(control_features)
         prob_purchase_treatment = np.clip(
-            sigmoid((baseline_effect_purchase + interaction_effect_purchase - a) / 6.0)
-            + noise,
+            sigmoid(
+                (baseline_effect_treatment + interaction_effect_treatment - a) / (2 * a)
+            )
+            + noise[: len(treatment_features)],
             0.01,
             0.99,
         )
         prob_purchase_control = np.clip(
-            sigmoid((baseline_effect_purchase - a) / 3.0) + noise,
+            sigmoid((baseline_effect_control - a) / (2 * a))
+            + noise[len(treatment_features) :],
+            0.01,
+            0.99,
+        )
+        prob_purchase_treatment_if_non_treatment = np.clip(
+            sigmoid((baseline_effect_treatment - a) / (2 * a))
+            + noise[: len(treatment_features)],
             0.01,
             0.99,
         )
         purchase = np.where(visit == 1, np.random.binomial(1, prob_purchase), 0)
         plt.clf()
-        plt.hist(prob_purchase_treatment, bins=20, alpha=0.5, label="Purchase")
-        plt.hist(prob_purchase_control, bins=20, alpha=0.5, label="Purchase")
+        plt.hist(
+            prob_purchase_treatment, bins=20, alpha=0.5, label="Purchase_Treatment"
+        )
+        plt.hist(prob_purchase_control, bins=20, alpha=0.5, label="Purchase_Control")
+        plt.hist(
+            prob_purchase_treatment_if_non_treatment,
+            bins=20,
+            alpha=0.5,
+            label="if_non_treatment",
+        )
+        plt.legend()
         plt.savefig("purchase_prob.png")
         import pdb
 
         pdb.set_trace()
-        true_mu_r_1 = (
-            sigmoid(baseline_effect_purchase + interaction_effect_purchase - a) + noise
-        )
-        true_mu_r_0 = sigmoid(baseline_effect_purchase - a) + noise
+        true_mu_r_1 = sigmoid(baseline_effect + interaction_effect - a) + noise
+        true_mu_r_0 = sigmoid(baseline_effect - a) + noise
         true_tau_r = true_mu_r_1 - true_mu_r_0
         return {
             "y_r": purchase,
@@ -295,7 +358,7 @@ def split_dataset(
     train_val_idx, test_idx = train_test_split(
         np.arange(len(dataset["features"])),
         train_size=0.8,
-        random_state=42,
+        random_state=0,
         stratify=dataset["T"],
     )
     train_val_dataset = {}
@@ -307,7 +370,7 @@ def split_dataset(
     train_idx, val_idx = train_test_split(
         np.arange(len(train_val_dataset["features"])),
         train_size=0.75,
-        random_state=42,
+        random_state=0,
         stratify=train_val_dataset["T"],
     )
     train_dataset = {}

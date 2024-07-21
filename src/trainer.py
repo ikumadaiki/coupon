@@ -31,7 +31,7 @@ class Trainer:
     ) -> nn.Module:  # type: ignore
         optimizer = optim.Adam(model.parameters(), lr=self.lr)
         lambda_scheduler = lr_scheduler.LambdaLR(
-            optimizer, lr_lambda=lambda epoch: 0.90**epoch
+            optimizer, lr_lambda=lambda epoch: 0.95**epoch
         )
         train_loss_history: List[float] = []
         val_loss_history: List[float] = []
