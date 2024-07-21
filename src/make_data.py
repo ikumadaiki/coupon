@@ -65,7 +65,7 @@ class DatasetGenerator:
         T_prob = sigmoid(
             (
                 np.dot(features[:, :2], np.random.uniform(1.0, 1.5, size=2))
-                - 0.5
+                - 1.0
                 + np.random.normal(0, 0.0, size=len(features))
             )
             / 2.0
@@ -121,7 +121,7 @@ class DatasetGenerator:
 
         def effect(features: NDArray[Any]) -> Tuple[NDArray[Any], NDArray[Any]]:
             baseline_effect = np.dot(
-                features[:, :2], np.random.uniform(1.8, 2.3, 2)
+                features[:, :2], np.random.uniform(1.0, 1.5, 2)
             )
             interaction_effect = np.exp(
                 np.dot(features[:, 2:4], np.random.uniform(0.3, 0.5, 2))
@@ -210,7 +210,7 @@ class DatasetGenerator:
         np.random.seed(self.seed)
 
         def effect(features: NDArray[Any]) -> Tuple[NDArray[Any], NDArray[Any]]:
-            baseline_effect = np.dot(features[:, 0].reshape(-1, 1), np.random.uniform(2.5, 3.0, 1))
+            baseline_effect = np.dot(features[:, 0].reshape(-1, 1), np.random.uniform(1.5, 2.0, 1))
             interaction_effect = np.exp(
                 np.dot(features[:, 2].reshape(-1, 1), np.random.uniform(0.5, 0.7, 1))
                 + 0.4 * features[:, 0]
@@ -268,9 +268,9 @@ class DatasetGenerator:
         )
         plt.legend()
         plt.savefig("purchase_prob.png")
-        import pdb
+        # import pdb
 
-        pdb.set_trace()
+        # pdb.set_trace()
         true_mu_r_1 = sigmoid(baseline_effect + interaction_effect - a) + noise
         true_mu_r_0 = sigmoid(baseline_effect - a) + noise
         true_tau_r = true_mu_r_1 - true_mu_r_0

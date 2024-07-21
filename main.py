@@ -70,10 +70,10 @@ def get_roi_tpmsl(
 def main(predict_ps: bool) -> None:
     seed = 42
     n_samples = 50_000
-    n_features = 6
+    n_features = 4
     num_epochs = 50
     delta = 0.0
-    batch_size = 128
+    batch_size = 512
     model_name = "Direct"
     model_params = {"input_dim": n_features}
     dataset = DatasetGenerator(
@@ -86,7 +86,7 @@ def main(predict_ps: bool) -> None:
     method_list = method_list[:2]
     # method_list = []
     roi_dic = {}
-    lr_list: list = [0.0001, 0.0001, 0.0005]
+    lr_list: list = [0.01, 0.01, 0.0005]
     for i, method in enumerate(method_list):
         train_dl = make_loader(
             train_dataset,
