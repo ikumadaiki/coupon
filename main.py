@@ -46,7 +46,9 @@ def get_roi_tpmsl(
     rmse_tau_r = np.sqrt(np.mean((test_dataset["true_tau_r"] - tau_r) ** 2))
     rmse_tau_c = np.sqrt(np.mean((test_dataset["true_tau_c"] - tau_c) ** 2))
     # AUCを計算
-    auc_mu_r_0 = roc_auc_score(np.round(np.clip(test_dataset["true_mu_r_0"], 0, 1)), mu_r_0)
+    auc_mu_r_0 = roc_auc_score(
+        np.round(np.clip(test_dataset["true_mu_r_0"], 0, 1)), mu_r_0
+    )
     auc_mu_r_1 = roc_auc_score(
         np.round(np.clip(test_dataset["true_mu_r_1"], 0, 1)), mu_r_1
     )
@@ -73,7 +75,7 @@ def main(predict_ps: bool) -> None:
     n_features = 4
     num_epochs = 50
     delta = 0.0
-    batch_size = 512
+    batch_size = 1024
     model_name = "Direct"
     model_params = {"input_dim": n_features}
     dataset = DatasetGenerator(
@@ -86,7 +88,7 @@ def main(predict_ps: bool) -> None:
     method_list = method_list[:2]
     # method_list = []
     roi_dic = {}
-    lr_list: list = [0.01, 0.01, 0.0005]
+    lr_list: list = [0.005, 0.0005, 0.0005]
     for i, method in enumerate(method_list):
         train_dl = make_loader(
             train_dataset,

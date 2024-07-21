@@ -68,7 +68,7 @@ class DatasetGenerator:
                 - 1.0
                 + np.random.normal(0, 0.0, size=len(features))
             )
-            / 2.0
+            / 1.5
         )
         T_prob = T_prob.clip(0.01, 0.99)
         T: NDArray[Any] = np.random.binomial(1, T_prob).astype(bool)

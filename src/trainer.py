@@ -4,22 +4,17 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.optim as optim
 from numpy.typing import NDArray
-from torch.optim import lr_scheduler
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+from transformers import AdamW, get_cosine_schedule_with_warmup
 
 # NNのランダム性を固定
 torch.manual_seed(42)
 
 
 class Trainer:
-    def __init__(
-        self,
-        num_epochs: int,
-        lr: float,
-    ):
+    def __init__(self, num_epochs: int, lr: float):
         self.num_epochs = num_epochs
         self.lr = lr
 
@@ -29,9 +24,11 @@ class Trainer:
         val_dl: DataLoader,  # type: ignore
         model: nn.Module,  # type: ignore
     ) -> nn.Module:  # type: ignore
-        optimizer = optim.Adam(model.parameters(), lr=self.lr)
-        lambda_scheduler = lr_scheduler.LambdaLR(
-            optimizer, lr_lambda=lambda epoch: 0.70**epoch
+        optimizer = AdamW(model.parameters(), lr=self.lr)
+        scheduler = get_cosine_schedule_with_warmup(
+            optimizer,
+            num_warmup_steps=0,
+            num_training_steps=self.num_epochs * len(train_dl),
         )
         train_loss_history: List[float] = []
         val_loss_history: List[float] = []
@@ -55,7 +52,7 @@ class Trainer:
 
             average_loss = total_train_loss / count_batch
 
-            lambda_scheduler.step()
+            scheduler.step()
             train_loss_history.append(total_train_loss / count_batch)
             model.eval()  # モデルを評価モードに設定
             total_val_loss = 0.0
