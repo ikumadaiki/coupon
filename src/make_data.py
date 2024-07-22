@@ -64,16 +64,17 @@ class DatasetGenerator:
         np.random.seed(self.seed)
         T_prob = sigmoid(
             (
-                np.dot(features[:, :2], np.random.uniform(1.0, 1.5, size=2))
-                - 1.0
+                np.sum(features, axis=1)
+                - 2.0
                 + np.random.normal(0, 0.0, size=len(features))
             )
-            / 1.5
+            / 0.8
         )
         T_prob = T_prob.clip(0.01, 0.99)
         T: NDArray[Any] = np.random.binomial(1, T_prob).astype(bool)
         treatment_prob = T_prob[T == 1]
         control_prob = T_prob[T == 0]
+        # plt.hist(T_prob, bins=20, alpha=0.5, label="T_prob")
         plt.hist(treatment_prob, bins=20, alpha=0.5, label="T=1")
         plt.hist(control_prob, bins=20, alpha=0.5, label="T=0")
         plt.legend()
@@ -120,12 +121,10 @@ class DatasetGenerator:
         np.random.seed(self.seed)
 
         def effect(features: NDArray[Any]) -> Tuple[NDArray[Any], NDArray[Any]]:
-            baseline_effect = np.dot(
-                features[:, :2], np.random.uniform(1.0, 1.5, 2)
-            )
+            baseline_effect = np.dot(features[:, :2], np.random.uniform(0.7, 1.0, 2)) - 1.0
             interaction_effect = np.exp(
                 np.dot(features[:, 2:4], np.random.uniform(0.3, 0.5, 2))
-                + 0.4 * features[:, 0]
+                + 0.2 * features[:, 0]
             )
             return baseline_effect, interaction_effect
 
@@ -135,7 +134,7 @@ class DatasetGenerator:
         noise = np.random.normal(0, std, size=len(features))
         a = 2.0
         prob_visit = np.clip(
-            sigmoid((baseline_effect + treatment_effect - a) / (2 * a)) + noise,
+            sigmoid((baseline_effect + treatment_effect - a) / (a)) + noise,
             0.01,
             0.99,
         )
@@ -148,28 +147,26 @@ class DatasetGenerator:
         baseline_effect_control, interaction_effect_control = effect(control_features)
         prob_visit_treatment = np.clip(
             sigmoid(
-                (baseline_effect_treatment + interaction_effect_treatment - a) / (2 * a)
+                (baseline_effect_treatment + interaction_effect_treatment - a) / (a)
             )
             + noise[: len(treatment_features)],
             0.01,
             0.99,
         )
         prob_visit_control = np.clip(
-            sigmoid((baseline_effect_control - a) / (2 * a))
+            sigmoid((baseline_effect_control - a) / (a))
             + noise[len(treatment_features) :],
             0.01,
             0.99,
         )
         prob_visit_treatment_if_non_treatment = np.clip(
-            sigmoid((baseline_effect_treatment - a) / (2 * a))
+            sigmoid((baseline_effect_treatment - a) / (a))
             + noise[: len(treatment_features)],
             0.01,
             0.99,
         )
         prpb_visit_control_if_treatment = np.clip(
-            sigmoid(
-                (baseline_effect_control + interaction_effect_control - a) / (2 * a)
-            )
+            sigmoid((baseline_effect_control + interaction_effect_control - a) / (a))
             + noise[len(treatment_features) :],
             0.01,
             0.99,
@@ -184,7 +181,9 @@ class DatasetGenerator:
             alpha=0.5,
             label="if_non_treatment",
         )
-        # plt.hist(prpb_visit_control_if_treatment, bins=20, alpha=0.5, label="if_treatment")
+        plt.hist(
+            prpb_visit_control_if_treatment, bins=20, alpha=0.5, label="if_treatment"
+        )
         plt.legend()
         plt.savefig("visit_prob.png")
         # import pdb
@@ -210,10 +209,12 @@ class DatasetGenerator:
         np.random.seed(self.seed)
 
         def effect(features: NDArray[Any]) -> Tuple[NDArray[Any], NDArray[Any]]:
-            baseline_effect = np.dot(features[:, 0].reshape(-1, 1), np.random.uniform(1.5, 2.0, 1))
+            baseline_effect = np.dot(
+                features[:, 0].reshape(-1, 1), np.random.uniform(1.0, 1.5, 1)
+            ) - 1.0
             interaction_effect = np.exp(
-                np.dot(features[:, 2].reshape(-1, 1), np.random.uniform(0.5, 0.7, 1))
-                + 0.4 * features[:, 0]
+                np.dot(features[:, 2].reshape(-1, 1), np.random.uniform(0.3, 0.5, 1))
+                + 0.2 * features[:, 0]
             )
             return baseline_effect, interaction_effect
 
@@ -223,8 +224,7 @@ class DatasetGenerator:
         noise = np.random.normal(0, std, size=len(features))
         a = 2.0
         prob_purchase = np.clip(
-            sigmoid((baseline_effect + treatment_effect - a) / (2 * a))
-            + noise,
+            sigmoid((baseline_effect + treatment_effect - a) / (a)) + noise,
             0.01,
             0.99,
         )
@@ -236,21 +236,29 @@ class DatasetGenerator:
         baseline_effect_control, interaction_effect_control = effect(control_features)
         prob_purchase_treatment = np.clip(
             sigmoid(
-                (baseline_effect_treatment + interaction_effect_treatment - a) / (2 * a)
+                (baseline_effect_treatment + interaction_effect_treatment - a) / (a)
             )
             + noise[: len(treatment_features)],
             0.01,
             0.99,
         )
         prob_purchase_control = np.clip(
-            sigmoid((baseline_effect_control - a) / (2 * a))
+            sigmoid((baseline_effect_control - a) / (a))
             + noise[len(treatment_features) :],
             0.01,
             0.99,
         )
         prob_purchase_treatment_if_non_treatment = np.clip(
-            sigmoid((baseline_effect_treatment - a) / (2 * a))
+            sigmoid((baseline_effect_treatment - a) / (a))
             + noise[: len(treatment_features)],
+            0.01,
+            0.99,
+        )
+        prob_purchace_control_if_treatment = np.clip(
+            sigmoid(
+                (baseline_effect_control + interaction_effect_control - a) / (a)
+                + noise[len(treatment_features) :]
+            ),
             0.01,
             0.99,
         )
@@ -266,11 +274,14 @@ class DatasetGenerator:
             alpha=0.5,
             label="if_non_treatment",
         )
+        plt.hist(
+            prob_purchace_control_if_treatment, bins=20, alpha=0.5, label="if_treatment"
+        )
         plt.legend()
         plt.savefig("purchase_prob.png")
-        # import pdb
+        import pdb
 
-        # pdb.set_trace()
+        pdb.set_trace()
         true_mu_r_1 = sigmoid(baseline_effect + interaction_effect - a) + noise
         true_mu_r_0 = sigmoid(baseline_effect - a) + noise
         true_tau_r = true_mu_r_1 - true_mu_r_0

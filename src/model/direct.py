@@ -96,6 +96,7 @@ class DirectCollator:
         y_r = torch.cat([y_r_treated, y_r_control], dim=0)
         y_c = torch.cat([y_c_treated, y_c_control], dim=0)
 
+
         return {
             "X": X,
             "treated_size": treated_size,
@@ -144,7 +145,7 @@ class DirectNonLinear(nn.Module):
         y_c: Optional[torch.Tensor] = None,
     ) -> Dict[str, torch.Tensor]:
         pred = self._predict(X)
-        if treated_size is not None and y_r is not None and y_c is not None:
+        if treated_size is not None and y_r is not None and y_c is not None:            
             q_treated = pred[:treated_size]
             y_r_treated = y_r[:treated_size]
             y_c_treated = y_c[:treated_size]
@@ -170,7 +171,7 @@ class DirectNonLinear(nn.Module):
 def custom_loss(
     y_r: torch.Tensor, y_c: torch.Tensor, q: torch.Tensor, group_size: int
 ) -> torch.Tensor:
-    q = torch.clamp(q, 1e-6, 1 - 1e-6)  # (N, 1)
+    q = torch.clamp(q, 1e-5, 1 - 1e-5)  # (N, 1)
     logit_q = torch.log(q / (1 - q))  # (N, 1)
 
     loss = -torch.sum(y_r * logit_q + y_c * torch.log(1 - q)) / group_size

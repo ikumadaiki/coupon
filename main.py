@@ -75,7 +75,7 @@ def main(predict_ps: bool) -> None:
     n_features = 4
     num_epochs = 50
     delta = 0.0
-    batch_size = 1024
+    batch_size = 512
     model_name = "Direct"
     model_params = {"input_dim": n_features}
     dataset = DatasetGenerator(
@@ -88,7 +88,7 @@ def main(predict_ps: bool) -> None:
     method_list = method_list[:2]
     # method_list = []
     roi_dic = {}
-    lr_list: list = [0.005, 0.0005, 0.0005]
+    lr_list: list = [0.001, 0.001]
     for i, method in enumerate(method_list):
         train_dl = make_loader(
             train_dataset,
