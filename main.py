@@ -63,9 +63,9 @@ def get_roi_tpmsl(
     scaler = MinMaxScaler()
     roi_tpmsl = scaler.fit_transform(roi_tpmsl.reshape(-1, 1)).flatten()
     rmse_roi = np.sqrt(np.mean((test_dataset["true_ROI"] - roi_tpmsl) ** 2))
-    import pdb
+    # import pdb
 
-    pdb.set_trace()
+    # pdb.set_trace()
     return roi_tpmsl
 
 
@@ -74,12 +74,13 @@ def main(predict_ps: bool) -> None:
     n_samples = 50_000
     n_features = 4
     num_epochs = 50
+    lr = 0.001
     delta = 0.0
     batch_size = 512
     model_name = "Direct"
     model_params = {"input_dim": n_features}
     dataset = DatasetGenerator(
-        n_samples, n_features, delta, predict_ps=predict_ps, seed=seed
+        n_samples, n_features, delta, predict_ps=predict_ps, only_rct=False, seed=seed
     )
     dataset = dataset.generate_dataset()
     train_dataset, val_dataset, test_dataset = split_dataset(dataset)
@@ -88,51 +89,7 @@ def main(predict_ps: bool) -> None:
     method_list = method_list[:2]
     # method_list = []
     roi_dic = {}
-    lr_list: list = [0.001, 0.001]
     for i, method in enumerate(method_list):
-        train_dl = make_loader(
-            train_dataset,
-            model_name=model_name,
-            batch_size=batch_size,
-            train_flg=True,
-            method=method,
-            seed=seed,
-        )
-        val_dl = make_loader(
-            val_dataset,
-            model_name=model_name,
-            batch_size=batch_size,
-            train_flg=True,
-            method=method,
-            seed=seed,
-        )
-        test_dl = make_loader(
-            test_dataset,
-            model_name=model_name,
-            batch_size=batch_size,
-            train_flg=False,
-            method=method,
-            seed=seed,
-        )
-        trainer = Trainer(num_epochs=num_epochs, lr=lr_list[i])
-        model = trainer.train(train_dl=train_dl, val_dl=val_dl, model=model)
-        trainer.save_model(model, "model.pth")
-        predictions = trainer.predict(dl=test_dl, model=model).squeeze()
-        roi_dic[method] = predictions
-    roi_tpmsl = get_roi_tpmsl(
-        train_dataset,
-        test_dataset,
-    )
-    roi_dic["TPMSL_LGBM"] = roi_tpmsl
-    model_name = "SLearner"
-    model_params = {"input_dim": n_features + 1}
-    model = get_model(model_name=model_name, model_params=model_params)
-    method_list: list = ["cost", "revenue"]
-    method_list = []
-    prediction_sl: dict[str, NDArray[np.float64]] = {}
-    num_epochs = 50
-    lr = 0.00002
-    for method in method_list:
         train_dl = make_loader(
             train_dataset,
             model_name=model_name,
@@ -161,17 +118,56 @@ def main(predict_ps: bool) -> None:
         model = trainer.train(train_dl=train_dl, val_dl=val_dl, model=model)
         trainer.save_model(model, "model.pth")
         predictions = trainer.predict(dl=test_dl, model=model).squeeze()
-        prediction_sl[method] = predictions
-    # roi_dic["TPMSL"] = prediction_sl["revenue"] / (prediction_sl["cost"] + 1e-6)
-    # scaler = MinMaxScaler()
-    # roi_dic["TPMSL"] = scaler.fit_transform(roi_dic["TPMSL"].reshape(-1, 1)).flatten()
+        roi_dic[method] = predictions
+    roi_tpmsl = get_roi_tpmsl(
+        train_dataset,
+        test_dataset,
+    )
+    roi_dic["TPMSL_LGBM"] = roi_tpmsl
     roi_dic["Optimal"] = test_dataset["true_tau_r"] / test_dataset["true_tau_c"]
+    dataset_only_rct = DatasetGenerator(
+        n_samples, n_features, delta, predict_ps=predict_ps, only_rct=True, seed=seed
+    )
+    dataset_only_rct = dataset_only_rct.generate_dataset()
+    train_dataset_only_RCT, val_dataset_only_RCT, test_dataset_only_RCT = split_dataset(dataset_only_rct)
+    train_dl_only_RCT = make_loader(
+        train_dataset_only_RCT,
+        model_name=model_name,
+        batch_size=batch_size,
+        train_flg=True,
+        method="Direct",
+        seed=seed,
+    )
+    val_dl_only_RCT = make_loader(
+        val_dataset_only_RCT,
+        model_name=model_name,
+        batch_size=batch_size,
+        train_flg=True,
+        method="Direct",
+        seed=seed,
+    )
+    test_dl_only_RCT = make_loader(
+        test_dataset_only_RCT,
+        model_name=model_name,
+        batch_size=batch_size,
+        train_flg=False,
+        method="Direct",
+        seed=seed,
+    )
+    trainer = Trainer(num_epochs=num_epochs, lr=lr)
+    model = trainer.train(train_dl=train_dl_only_RCT, val_dl=val_dl_only_RCT, model=model)
+    trainer.save_model(model, "model.pth")
+    predictions = trainer.predict(dl=test_dl_only_RCT, model=model).squeeze()
     plt.clf()
     for roi in roi_dic:
         incremental_costs, incremental_values = calculate_values(
             roi_dic[roi], test_dataset["true_tau_r"], test_dataset["true_tau_c"]
         )
         cost_curve(incremental_costs, incremental_values, label=roi)
+    incremental_costs_only_RCT, incremental_values_only_RCT = calculate_values(
+        predictions, test_dataset_only_RCT["true_tau_r"], test_dataset_only_RCT["true_tau_c"]
+    )
+    cost_curve(incremental_costs_only_RCT, incremental_values_only_RCT, label="Direct_only_RCT")
 
 
 if __name__ == "__main__":

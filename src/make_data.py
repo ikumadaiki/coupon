@@ -14,18 +14,20 @@ def sigmoid(x: NDArray[np.float64]) -> NDArray[np.float64]:
 
 class DatasetGenerator:
     def __init__(
-        self, n_samples: int, n_features: int, delta: float, predict_ps: bool, seed: int
+        self, n_samples: int, n_features: int, delta: float, predict_ps: bool, only_rct: bool ,seed: int
     ):
         self.n_samples = n_samples
         self.n_features = n_features
         self.delta = delta
         self.predict_ps = predict_ps
+        self.only_rct = only_rct
         self.seed = seed
 
     def generate_dataset(self) -> dict[str, NDArray[Any]]:
         dataset: dict[str, NDArray[Any]] = {}
+        dataset |= self.set_rct_flag()
         dataset |= self.generate_feature()
-        dataset |= self.generate_treatment(dataset["features"])
+        dataset |= self.generate_treatment(dataset["features"], dataset["RCT_flag"])
         # auc_score = self.calculate_auc(dataset["T"], dataset["T_prob"])
         if self.predict_ps:
             dataset |= self.predict_treatment(dataset["features"], dataset["T"])
@@ -55,12 +57,26 @@ class DatasetGenerator:
 
         return dataset
 
+    def set_rct_flag(self) -> dict[str, NDArray[Any]]:
+        if self.only_rct:
+            rct_flag = np.ones(int(self.n_samples * 0.1))
+        else:
+            rct_flag = np.hstack(
+                [np.zeros(int(self.n_samples * 0.9)), np.ones(int(self.n_samples * 0.1))]
+            )
+        return {"RCT_flag": rct_flag}
+
     def generate_feature(self) -> Dict[str, NDArray[Any]]:
         np.random.seed(self.seed)
-        features = np.random.normal(size=(self.n_samples, self.n_features))
+        if self.only_rct:
+            features = np.random.normal(size=(int(self.n_samples * 0.1), self.n_features))
+        else:
+            features = np.random.normal(size=(self.n_samples, self.n_features))
         return {"features": features}
 
-    def generate_treatment(self, features: NDArray[Any]) -> Dict[str, NDArray[Any]]:
+    def generate_treatment(
+        self, features: NDArray[Any], rct_flag: NDArray[Any]
+    ) -> Dict[str, NDArray[Any]]:
         np.random.seed(self.seed)
         T_prob = sigmoid(
             (
@@ -71,6 +87,7 @@ class DatasetGenerator:
             / 0.8
         )
         T_prob = T_prob.clip(0.01, 0.99)
+        T_prob[rct_flag == 1] = 0.5
         T: NDArray[Any] = np.random.binomial(1, T_prob).astype(bool)
         treatment_prob = T_prob[T == 1]
         control_prob = T_prob[T == 0]
@@ -121,7 +138,9 @@ class DatasetGenerator:
         np.random.seed(self.seed)
 
         def effect(features: NDArray[Any]) -> Tuple[NDArray[Any], NDArray[Any]]:
-            baseline_effect = np.dot(features[:, :2], np.random.uniform(0.7, 1.0, 2)) - 1.0
+            baseline_effect = (
+                np.dot(features[:, :2], np.random.uniform(0.7, 1.0, 2)) - 1.0
+            )
             interaction_effect = np.exp(
                 np.dot(features[:, 2:4], np.random.uniform(0.3, 0.5, 2))
                 + 0.2 * features[:, 0]
@@ -209,9 +228,10 @@ class DatasetGenerator:
         np.random.seed(self.seed)
 
         def effect(features: NDArray[Any]) -> Tuple[NDArray[Any], NDArray[Any]]:
-            baseline_effect = np.dot(
-                features[:, 0].reshape(-1, 1), np.random.uniform(1.0, 1.5, 1)
-            ) - 1.0
+            baseline_effect = (
+                np.dot(features[:, 0].reshape(-1, 1), np.random.uniform(1.0, 1.5, 1))
+                - 1.0
+            )
             interaction_effect = np.exp(
                 np.dot(features[:, 2].reshape(-1, 1), np.random.uniform(0.3, 0.5, 1))
                 + 0.2 * features[:, 0]
@@ -279,9 +299,9 @@ class DatasetGenerator:
         )
         plt.legend()
         plt.savefig("purchase_prob.png")
-        import pdb
+        # import pdb
 
-        pdb.set_trace()
+        # pdb.set_trace()
         true_mu_r_1 = sigmoid(baseline_effect + interaction_effect - a) + noise
         true_mu_r_0 = sigmoid(baseline_effect - a) + noise
         true_tau_r = true_mu_r_1 - true_mu_r_0
@@ -366,11 +386,12 @@ class DatasetGenerator:
 def split_dataset(
     dataset: Dict[str, NDArray[Any]],
 ) -> Tuple[Dict[str, NDArray[Any]], Dict[str, NDArray[Any]], Dict[str, NDArray[Any]]]:
+    dataset["strata"] = dataset["T"] * 1.1 + dataset["RCT_flag"]
     train_val_idx, test_idx = train_test_split(
         np.arange(len(dataset["features"])),
         train_size=0.8,
         random_state=0,
-        stratify=dataset["T"],
+        stratify=dataset["strata"],
     )
     train_val_dataset = {}
     test_dataset = {}
@@ -382,7 +403,7 @@ def split_dataset(
         np.arange(len(train_val_dataset["features"])),
         train_size=0.75,
         random_state=0,
-        stratify=train_val_dataset["T"],
+        stratify=train_val_dataset["strata"],
     )
     train_dataset = {}
     val_dataset = {}
