@@ -96,7 +96,6 @@ class DirectCollator:
         y_r = torch.cat([y_r_treated, y_r_control], dim=0)
         y_c = torch.cat([y_c_treated, y_c_control], dim=0)
 
-
         return {
             "X": X,
             "treated_size": treated_size,
@@ -129,11 +128,11 @@ class DirectNonLinear(nn.Module):
             nn.Dropout(0.1),
             nn.Linear(2 * input_dim, input_dim),
             nn.ReLU(),
-            nn.Dropout(0.05),
-            nn.Linear(input_dim, int(0.5 * input_dim)),
-            nn.ReLU(),
-            nn.Dropout(0.05),
-            nn.Linear(int(0.5 * input_dim), 1),
+            nn.Dropout(0.1),
+            # nn.Linear(input_dim, int(0.5 * input_dim)),
+            # nn.ReLU(),
+            # nn.Dropout(0.1),
+            nn.Linear(input_dim, 1),
             nn.Sigmoid(),
         )
 
@@ -145,7 +144,7 @@ class DirectNonLinear(nn.Module):
         y_c: Optional[torch.Tensor] = None,
     ) -> Dict[str, torch.Tensor]:
         pred = self._predict(X)
-        if treated_size is not None and y_r is not None and y_c is not None:            
+        if treated_size is not None and y_r is not None and y_c is not None:
             q_treated = pred[:treated_size]
             y_r_treated = y_r[:treated_size]
             y_c_treated = y_c[:treated_size]

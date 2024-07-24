@@ -1,4 +1,4 @@
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -14,42 +14,56 @@ def sigmoid(x: NDArray[np.float64]) -> NDArray[np.float64]:
 
 class DatasetGenerator:
     def __init__(
-        self, n_samples: int, n_features: int, delta: float, predict_ps: bool, only_rct: bool ,seed: int
+        self,
+        n_samples: int,
+        n_features: int,
+        delta: float,
+        predict_ps: bool,
+        only_rct: bool,
+        rct_ratio: float,
+        train_flg: bool,
+        seed: int,
     ):
         self.n_samples = n_samples
         self.n_features = n_features
         self.delta = delta
         self.predict_ps = predict_ps
         self.only_rct = only_rct
+        self.rct_ratio = rct_ratio
+        self.train_flg = train_flg
         self.seed = seed
 
     def generate_dataset(self) -> dict[str, NDArray[Any]]:
         dataset: dict[str, NDArray[Any]] = {}
-        dataset |= self.set_rct_flag()
         dataset |= self.generate_feature()
-        dataset |= self.generate_treatment(dataset["features"], dataset["RCT_flag"])
-        # auc_score = self.calculate_auc(dataset["T"], dataset["T_prob"])
-        if self.predict_ps:
-            dataset |= self.predict_treatment(dataset["features"], dataset["T"])
-            propensity_score = dataset["T_prob_pred"]
+        if self.train_flg:
+            dataset |= self.set_rct_flag()
+            dataset |= self.generate_treatment(dataset["features"], dataset["RCT_flag"])
+            # auc_score = self.calculate_auc(dataset["T"], dataset["T_prob"])
+            if self.predict_ps:
+                dataset |= self.predict_treatment(dataset["features"], dataset["T"])
+                propensity_score = dataset["T_prob_pred"]
+            else:
+                propensity_score = dataset["T_prob"]
+            rmse = self.calculate_rmse(dataset["T_prob"], propensity_score)
+            print("RMSE: ", rmse)
+            dataset |= self.generate_visit(dataset["features"], dataset["T"])
+            dataset |= self.generate_conversion(
+                dataset["features"], dataset["T"], dataset["y_c"]
+            )
+            dataset |= self.culculate_doubly_robust(
+                dataset["features"],
+                dataset["T"],
+                propensity_score,
+                dataset["y_r"],
+                dataset["y_c"],
+            )
+            dataset |= self.culculate_ipw(
+                dataset["T"], propensity_score, dataset["y_r"], dataset["y_c"]
+            )
         else:
-            propensity_score = dataset["T_prob"]
-        rmse = self.calculate_rmse(dataset["T_prob"], propensity_score)
-        print("RMSE: ", rmse)
-        dataset |= self.generate_visit(dataset["features"], dataset["T"])
-        dataset |= self.generate_conversion(
-            dataset["features"], dataset["T"], dataset["y_c"]
-        )
-        dataset |= self.culculate_doubly_robust(
-            dataset["features"],
-            dataset["T"],
-            propensity_score,
-            dataset["y_r"],
-            dataset["y_c"],
-        )
-        dataset |= self.culculate_ipw(
-            dataset["T"], propensity_score, dataset["y_r"], dataset["y_c"]
-        )
+            dataset |= self.generate_visit(dataset["features"])
+            dataset |= self.generate_conversion(dataset["features"])
         dataset["true_ROI"] = dataset["true_tau_r"] / dataset["true_tau_c"]
         # import pdb
 
@@ -59,17 +73,19 @@ class DatasetGenerator:
 
     def set_rct_flag(self) -> dict[str, NDArray[Any]]:
         if self.only_rct:
-            rct_flag = np.ones(int(self.n_samples * 0.1))
+            rct_flag = np.ones(int(self.n_samples * self.rct_ratio))
         else:
-            rct_flag = np.hstack(
-                [np.zeros(int(self.n_samples * 0.9)), np.ones(int(self.n_samples * 0.1))]
-            )
+            rct_flag = np.zeros(self.n_samples)
+            for i in range(0, self.n_samples, int(1 / self.rct_ratio)):
+                rct_flag[i] = 1
         return {"RCT_flag": rct_flag}
 
     def generate_feature(self) -> Dict[str, NDArray[Any]]:
         np.random.seed(self.seed)
         if self.only_rct:
-            features = np.random.normal(size=(int(self.n_samples * 0.1), self.n_features))
+            features = np.random.normal(
+                size=(int(self.n_samples * self.rct_ratio), self.n_features)
+            )
         else:
             features = np.random.normal(size=(self.n_samples, self.n_features))
         return {"features": features}
@@ -84,13 +100,14 @@ class DatasetGenerator:
                 - 2.0
                 + np.random.normal(0, 0.0, size=len(features))
             )
-            / 0.8
+            / 0.7
         )
         T_prob = T_prob.clip(0.01, 0.99)
         T_prob[rct_flag == 1] = 0.5
         T: NDArray[Any] = np.random.binomial(1, T_prob).astype(bool)
         treatment_prob = T_prob[T == 1]
         control_prob = T_prob[T == 0]
+        plt.clf()
         # plt.hist(T_prob, bins=20, alpha=0.5, label="T_prob")
         plt.hist(treatment_prob, bins=20, alpha=0.5, label="T=1")
         plt.hist(control_prob, bins=20, alpha=0.5, label="T=0")
@@ -130,81 +147,99 @@ class DatasetGenerator:
     ) -> float:
         return float(np.sqrt(np.mean((T_prob - T_prob_pred) ** 2)))
 
+    def visit_effect(self, features: NDArray[Any]) -> Tuple[NDArray[Any], NDArray[Any]]:
+        baseline_effect = np.dot(features[:, :2], np.random.uniform(0.7, 1.0, 2)) - 1.5
+        interaction_effect = np.exp(
+            np.dot(features[:, 2:4], np.random.uniform(0.3, 0.5, 2))
+            + 0.2 * features[:, 0]
+        )
+        return baseline_effect, interaction_effect
+
+    def conversion_effect(
+        self, features: NDArray[Any]
+    ) -> Tuple[NDArray[Any], NDArray[Any]]:
+        baseline_effect = (
+            np.dot(features[:, 0].reshape(-1, 1), np.random.uniform(1.0, 1.5, 1)) - 1.5
+        )
+        interaction_effect = np.exp(
+            np.dot(features[:, 2].reshape(-1, 1), np.random.uniform(0.3, 0.5, 1))
+            + 0.2 * features[:, 0]
+        )
+        return baseline_effect, interaction_effect
+
     def generate_visit(
         self,
         features: NDArray[Any],
-        T: NDArray[Any],
+        T: Optional[NDArray[Any]] = None,
     ) -> dict[str, NDArray[Any]]:
         np.random.seed(self.seed)
 
-        def effect(features: NDArray[Any]) -> Tuple[NDArray[Any], NDArray[Any]]:
-            baseline_effect = (
-                np.dot(features[:, :2], np.random.uniform(0.7, 1.0, 2)) - 1.0
-            )
-            interaction_effect = np.exp(
-                np.dot(features[:, 2:4], np.random.uniform(0.3, 0.5, 2))
-                + 0.2 * features[:, 0]
-            )
-            return baseline_effect, interaction_effect
-
-        baseline_effect, interaction_effect = effect(features)
-        treatment_effect = T * interaction_effect
+        baseline_effect, interaction_effect = self.visit_effect(features)
         std = self.delta * np.sqrt(np.pi / 2)
         noise = np.random.normal(0, std, size=len(features))
         a = 2.0
-        prob_visit = np.clip(
-            sigmoid((baseline_effect + treatment_effect - a) / (a)) + noise,
-            0.01,
-            0.99,
-        )
-        visit = np.random.binomial(1, prob_visit)
-        treatment_features = features[T == 1]
-        control_features = features[T == 0]
-        baseline_effect_treatment, interaction_effect_treatment = effect(
-            treatment_features
-        )
-        baseline_effect_control, interaction_effect_control = effect(control_features)
-        prob_visit_treatment = np.clip(
-            sigmoid(
-                (baseline_effect_treatment + interaction_effect_treatment - a) / (a)
+        if self.train_flg:
+            treatment_effect = T * interaction_effect
+            prob_visit = np.clip(
+                sigmoid((baseline_effect + treatment_effect - a) / (a)) + noise,
+                0.01,
+                0.99,
             )
-            + noise[: len(treatment_features)],
-            0.01,
-            0.99,
-        )
-        prob_visit_control = np.clip(
-            sigmoid((baseline_effect_control - a) / (a))
-            + noise[len(treatment_features) :],
-            0.01,
-            0.99,
-        )
-        prob_visit_treatment_if_non_treatment = np.clip(
-            sigmoid((baseline_effect_treatment - a) / (a))
-            + noise[: len(treatment_features)],
-            0.01,
-            0.99,
-        )
-        prpb_visit_control_if_treatment = np.clip(
-            sigmoid((baseline_effect_control + interaction_effect_control - a) / (a))
-            + noise[len(treatment_features) :],
-            0.01,
-            0.99,
-        )
+            visit = np.random.binomial(1, prob_visit)
+            treatment_features = features[T == 1]
+            control_features = features[T == 0]
+            baseline_effect_treatment, interaction_effect_treatment = self.visit_effect(
+                treatment_features
+            )
+            baseline_effect_control, interaction_effect_control = self.visit_effect(
+                control_features
+            )
+            prob_visit_treatment = np.clip(
+                sigmoid(
+                    (baseline_effect_treatment + interaction_effect_treatment - a) / (a)
+                )
+                + noise[: len(treatment_features)],
+                0.01,
+                0.99,
+            )
+            prob_visit_control = np.clip(
+                sigmoid((baseline_effect_control - a) / (a))
+                + noise[len(treatment_features) :],
+                0.01,
+                0.99,
+            )
+            prob_visit_treatment_if_non_treatment = np.clip(
+                sigmoid((baseline_effect_treatment - a) / (a))
+                + noise[: len(treatment_features)],
+                0.01,
+                0.99,
+            )
+            prpb_visit_control_if_treatment = np.clip(
+                sigmoid(
+                    (baseline_effect_control + interaction_effect_control - a) / (a)
+                )
+                + noise[len(treatment_features) :],
+                0.01,
+                0.99,
+            )
 
-        plt.clf()
-        plt.hist(prob_visit_treatment, bins=20, alpha=0.5, label="Visit_Treatment")
-        plt.hist(prob_visit_control, bins=20, alpha=0.5, label="Visit_Control")
-        plt.hist(
-            prob_visit_treatment_if_non_treatment,
-            bins=20,
-            alpha=0.5,
-            label="if_non_treatment",
-        )
-        plt.hist(
-            prpb_visit_control_if_treatment, bins=20, alpha=0.5, label="if_treatment"
-        )
-        plt.legend()
-        plt.savefig("visit_prob.png")
+            plt.clf()
+            plt.hist(prob_visit_treatment, bins=20, alpha=0.5, label="Visit_Treatment")
+            plt.hist(prob_visit_control, bins=20, alpha=0.5, label="Visit_Control")
+            plt.hist(
+                prob_visit_treatment_if_non_treatment,
+                bins=20,
+                alpha=0.5,
+                label="if_non_treatment",
+            )
+            plt.hist(
+                prpb_visit_control_if_treatment,
+                bins=20,
+                alpha=0.5,
+                label="if_treatment",
+            )
+            plt.legend()
+            plt.savefig("visit_prob.png")
         # import pdb
 
         # pdb.set_trace()
@@ -212,105 +247,116 @@ class DatasetGenerator:
         true_mu_c_0 = sigmoid(baseline_effect - a) + noise
         true_tau_c = true_mu_c_1 - true_mu_c_0
 
-        return {
-            "y_c": visit,
-            "true_mu_c_1": true_mu_c_1,
-            "true_mu_c_0": true_mu_c_0,
-            "true_tau_c": true_tau_c,
-        }
+        if self.train_flg:
+            return {
+                "y_c": visit,
+                "true_mu_c_1": true_mu_c_1,
+                "true_mu_c_0": true_mu_c_0,
+                "true_tau_c": true_tau_c,
+            }
+        else:
+            return {
+                "true_mu_c_1": true_mu_c_1,
+                "true_mu_c_0": true_mu_c_0,
+                "true_tau_c": true_tau_c,
+            }
 
     def generate_conversion(
         self,
         features: NDArray[Any],
-        T: NDArray[Any],
-        visit: NDArray[Any],
+        T: Optional[NDArray[Any]] = None,
+        visit: Optional[NDArray[Any]] = None,
     ) -> Dict[str, NDArray[Any]]:
         np.random.seed(self.seed)
 
-        def effect(features: NDArray[Any]) -> Tuple[NDArray[Any], NDArray[Any]]:
-            baseline_effect = (
-                np.dot(features[:, 0].reshape(-1, 1), np.random.uniform(1.0, 1.5, 1))
-                - 1.0
-            )
-            interaction_effect = np.exp(
-                np.dot(features[:, 2].reshape(-1, 1), np.random.uniform(0.3, 0.5, 1))
-                + 0.2 * features[:, 0]
-            )
-            return baseline_effect, interaction_effect
-
-        baseline_effect, interaction_effect = effect(features)
-        treatment_effect = T * interaction_effect
+        baseline_effect, interaction_effect = self.conversion_effect(features)
         std = self.delta * np.sqrt(np.pi / 2)
         noise = np.random.normal(0, std, size=len(features))
         a = 2.0
-        prob_purchase = np.clip(
-            sigmoid((baseline_effect + treatment_effect - a) / (a)) + noise,
-            0.01,
-            0.99,
-        )
-        treatment_features = features[T == 1]
-        control_features = features[T == 0]
-        baseline_effect_treatment, interaction_effect_treatment = effect(
-            treatment_features
-        )
-        baseline_effect_control, interaction_effect_control = effect(control_features)
-        prob_purchase_treatment = np.clip(
-            sigmoid(
-                (baseline_effect_treatment + interaction_effect_treatment - a) / (a)
+        if self.train_flg:
+            treatment_effect = T * interaction_effect
+            prob_purchase = np.clip(
+                sigmoid((baseline_effect + treatment_effect - a) / (a)) + noise,
+                0.01,
+                0.99,
             )
-            + noise[: len(treatment_features)],
-            0.01,
-            0.99,
-        )
-        prob_purchase_control = np.clip(
-            sigmoid((baseline_effect_control - a) / (a))
-            + noise[len(treatment_features) :],
-            0.01,
-            0.99,
-        )
-        prob_purchase_treatment_if_non_treatment = np.clip(
-            sigmoid((baseline_effect_treatment - a) / (a))
-            + noise[: len(treatment_features)],
-            0.01,
-            0.99,
-        )
-        prob_purchace_control_if_treatment = np.clip(
-            sigmoid(
-                (baseline_effect_control + interaction_effect_control - a) / (a)
-                + noise[len(treatment_features) :]
-            ),
-            0.01,
-            0.99,
-        )
-        purchase = np.where(visit == 1, np.random.binomial(1, prob_purchase), 0)
-        plt.clf()
-        plt.hist(
-            prob_purchase_treatment, bins=20, alpha=0.5, label="Purchase_Treatment"
-        )
-        plt.hist(prob_purchase_control, bins=20, alpha=0.5, label="Purchase_Control")
-        plt.hist(
-            prob_purchase_treatment_if_non_treatment,
-            bins=20,
-            alpha=0.5,
-            label="if_non_treatment",
-        )
-        plt.hist(
-            prob_purchace_control_if_treatment, bins=20, alpha=0.5, label="if_treatment"
-        )
-        plt.legend()
-        plt.savefig("purchase_prob.png")
+            treatment_features = features[T == 1]
+            control_features = features[T == 0]
+            baseline_effect_treatment, interaction_effect_treatment = (
+                self.conversion_effect(treatment_features)
+            )
+            baseline_effect_control, interaction_effect_control = (
+                self.conversion_effect(control_features)
+            )
+            prob_purchase_treatment = np.clip(
+                sigmoid(
+                    (baseline_effect_treatment + interaction_effect_treatment - a) / (a)
+                )
+                + noise[: len(treatment_features)],
+                0.01,
+                0.99,
+            )
+            prob_purchase_control = np.clip(
+                sigmoid((baseline_effect_control - a) / (a))
+                + noise[len(treatment_features) :],
+                0.01,
+                0.99,
+            )
+            prob_purchase_treatment_if_non_treatment = np.clip(
+                sigmoid((baseline_effect_treatment - a) / (a))
+                + noise[: len(treatment_features)],
+                0.01,
+                0.99,
+            )
+            prob_purchace_control_if_treatment = np.clip(
+                sigmoid(
+                    (baseline_effect_control + interaction_effect_control - a) / (a)
+                    + noise[len(treatment_features) :]
+                ),
+                0.01,
+                0.99,
+            )
+            purchase = np.where(visit == 1, np.random.binomial(1, prob_purchase), 0)
+            plt.clf()
+            plt.hist(
+                prob_purchase_treatment, bins=20, alpha=0.5, label="Purchase_Treatment"
+            )
+            plt.hist(
+                prob_purchase_control, bins=20, alpha=0.5, label="Purchase_Control"
+            )
+            plt.hist(
+                prob_purchase_treatment_if_non_treatment,
+                bins=20,
+                alpha=0.5,
+                label="if_non_treatment",
+            )
+            plt.hist(
+                prob_purchace_control_if_treatment,
+                bins=20,
+                alpha=0.5,
+                label="if_treatment",
+            )
+            plt.legend()
+            plt.savefig("purchase_prob.png")
         # import pdb
 
         # pdb.set_trace()
         true_mu_r_1 = sigmoid(baseline_effect + interaction_effect - a) + noise
         true_mu_r_0 = sigmoid(baseline_effect - a) + noise
         true_tau_r = true_mu_r_1 - true_mu_r_0
-        return {
-            "y_r": purchase,
-            "true_mu_r_1": true_mu_r_1,
-            "true_mu_r_0": true_mu_r_0,
-            "true_tau_r": true_tau_r,
-        }
+        if self.train_flg:
+            return {
+                "y_r": purchase,
+                "true_mu_r_1": true_mu_r_1,
+                "true_mu_r_0": true_mu_r_0,
+                "true_tau_r": true_tau_r,
+            }
+        else:
+            return {
+                "true_mu_r_1": true_mu_r_1,
+                "true_mu_r_0": true_mu_r_0,
+                "true_tau_r": true_tau_r,
+            }
 
     def culculate_doubly_robust(
         self,
@@ -385,30 +431,18 @@ class DatasetGenerator:
 
 def split_dataset(
     dataset: Dict[str, NDArray[Any]],
-) -> Tuple[Dict[str, NDArray[Any]], Dict[str, NDArray[Any]], Dict[str, NDArray[Any]]]:
+) -> Tuple[Dict[str, NDArray[Any]], Dict[str, NDArray[Any]]]:
     dataset["strata"] = dataset["T"] * 1.1 + dataset["RCT_flag"]
-    train_val_idx, test_idx = train_test_split(
+    train_idx, val_idx = train_test_split(
         np.arange(len(dataset["features"])),
-        train_size=0.8,
+        train_size=0.7,
         random_state=0,
         stratify=dataset["strata"],
     )
-    train_val_dataset = {}
-    test_dataset = {}
-    for key, value in dataset.items():
-        train_val_dataset[key] = value[train_val_idx]
-        test_dataset[key] = value[test_idx]
-
-    train_idx, val_idx = train_test_split(
-        np.arange(len(train_val_dataset["features"])),
-        train_size=0.75,
-        random_state=0,
-        stratify=train_val_dataset["strata"],
-    )
     train_dataset = {}
     val_dataset = {}
-    for key, value in train_val_dataset.items():
+    for key, value in dataset.items():
         train_dataset[key] = value[train_idx]
         val_dataset[key] = value[val_idx]
 
-    return train_dataset, val_dataset, test_dataset
+    return train_dataset, val_dataset

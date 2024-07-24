@@ -23,6 +23,7 @@ class Trainer:
         train_dl: DataLoader,  # type: ignore
         val_dl: DataLoader,  # type: ignore
         model: nn.Module,  # type: ignore
+        method: str,
     ) -> nn.Module:  # type: ignore
         optimizer = AdamW(model.parameters(), lr=self.lr)
         scheduler = get_cosine_schedule_with_warmup(
@@ -71,7 +72,7 @@ class Trainer:
         plt.xlabel("Epoch")
         plt.ylabel("Loss")
         plt.legend()
-        plt.savefig("train_val_loss.png")
+        plt.savefig(f"train_val_loss_{method}.png")
         return model
 
     def predict(self, dl: DataLoader, model: nn.Module) -> NDArray[Any]:  # type: ignore
