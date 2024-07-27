@@ -74,10 +74,10 @@ def main(predict_ps: bool) -> None:
     n_samples = 100_000
     test_samples = 100_000
     n_features = 4
-    num_epochs_list = [100, 40, 40]
-    lr_list = [0.0005, 0.001, 0.001]
+    num_epochs_list = [300, 50, 50]
+    lr_list = [0.0005, 0.001, 0.0005]
     delta = 0.0
-    rct_ratio = 0.2
+    rct_ratio = 0.1
     batch_size = 256
     model_name = "Direct"
     model_params = {"input_dim": n_features}
@@ -235,4 +235,4 @@ def main(predict_ps: bool) -> None:
 
 
 if __name__ == "__main__":
-    main(predict_ps=False)
+    main(predict_ps=True)

@@ -41,7 +41,7 @@ class DatasetGenerator:
             dataset |= self.generate_treatment(dataset["features"], dataset["RCT_flag"])
             # auc_score = self.calculate_auc(dataset["T"], dataset["T_prob"])
             if self.predict_ps:
-                dataset |= self.predict_treatment(dataset["features"], dataset["T"])
+                dataset |= self.predict_treatment(dataset["features"], dataset["T"], dataset["RCT_flag"])
                 propensity_score = dataset["T_prob_pred"]
             else:
                 propensity_score = dataset["T_prob"]
@@ -98,7 +98,7 @@ class DatasetGenerator:
             (
                 np.sum(features, axis=1)
                 - 2.0
-                + np.random.normal(0, 0.0, size=len(features))
+                + np.random.normal(0, 1.0, size=len(features))
             )
             / 0.7
         )
@@ -124,10 +124,12 @@ class DatasetGenerator:
         self,
         features: NDArray[Any],
         T: NDArray[Any],
+        rct_flag: NDArray[Any],
     ) -> Dict[str, NDArray[Any]]:
         lgb = LGBMClassifier(verbose=-1, random_state=42)
         lgb.fit(features, T)
         T_prob_pred = lgb.predict_proba(features)[:, 1]
+        T_prob_pred[rct_flag == 1] = 0.5
         T_prob_pred = T_prob_pred.clip(0.01, 0.99)
         return {"T_prob_pred": T_prob_pred}
 
