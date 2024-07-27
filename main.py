@@ -74,10 +74,10 @@ def main(predict_ps: bool) -> None:
     n_samples = 100_000
     test_samples = 100_000
     n_features = 4
-    num_epochs_list = [300, 50, 50]
-    lr_list = [0.0005, 0.001, 0.0005]
+    num_epochs_list = [150, 150, 100]
+    lr_list = [0.0005, 0.0005, 0.001]
     delta = 0.0
-    rct_ratio = 0.1
+    rct_ratio = 0.15
     batch_size = 256
     model_name = "Direct"
     model_params = {"input_dim": n_features}
@@ -126,21 +126,12 @@ def main(predict_ps: bool) -> None:
             method=method,
             seed=seed,
         )
-        test_dl = make_loader(
-            test_dataset,
-            model_name=model_name,
-            batch_size=batch_size,
-            train_flg=False,
-            method=method,
-            seed=seed,
-        )
         trainer = Trainer(num_epochs=num_epochs_list[i], lr=lr_list[i])
         model = trainer.train(
             train_dl=train_dl, val_dl=val_dl, model=model, method=method
         )
-        trainer.save_model(model, "model.pth")
-        predictions = trainer.predict(dl=test_dl, model=model).squeeze()
-        roi_dic[method] = predictions
+        trainer.save_model(model, f"model_{method}.pth")
+
     dataset_only_RCT = DatasetGenerator(
         n_samples,
         n_features,
@@ -220,7 +211,7 @@ def main(predict_ps: bool) -> None:
         model = trainer.train(
             train_dl=train_dl, val_dl=val_dl, model=model, method=method
         )
-        trainer.save_model(model, "model.pth")
+        trainer.save_model(model, f"model_{method}.pth")
         predictions = trainer.predict(dl=test_dl, model=model).squeeze()
         predictions_sl[method] = predictions
     # roi_dic["TPMSL_NN"] = predictions_sl["revenue"] / predictions_sl["cost"]
