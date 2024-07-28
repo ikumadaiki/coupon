@@ -18,6 +18,7 @@ class DatasetGenerator:
         n_samples: int,
         n_features: int,
         delta: float,
+        ps_std: float,
         predict_ps: bool,
         only_rct: bool,
         rct_ratio: float,
@@ -27,6 +28,7 @@ class DatasetGenerator:
         self.n_samples = n_samples
         self.n_features = n_features
         self.delta = delta
+        self.ps_std = ps_std
         self.predict_ps = predict_ps
         self.only_rct = only_rct
         self.rct_ratio = rct_ratio
@@ -98,7 +100,7 @@ class DatasetGenerator:
             (
                 np.sum(features, axis=1)
                 - 2.0
-                + np.random.normal(0, 1.0, size=len(features))
+                + np.random.normal(0, self.ps_std, size=len(features))
             )
             / 0.7
         )

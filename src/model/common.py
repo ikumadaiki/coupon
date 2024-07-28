@@ -22,8 +22,8 @@ def make_loader(
     model_name: str,
     batch_size: int,
     train_flg: Optional[bool],
-    method: Optional[str],
-    seed: int,
+    method: Optional[str] = None,
+    seed: int = 42,
 ) -> DataLoader:  # type: ignore
     collator = None
     ds: Dataset  # type: ignore
