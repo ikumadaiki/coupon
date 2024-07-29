@@ -51,8 +51,6 @@ class Trainer:
                 total_train_loss += loss
                 count_batch += 1
 
-            average_loss = total_train_loss / count_batch
-
             scheduler.step()
             train_loss_history.append(total_train_loss / count_batch)
             model.eval()  # モデルを評価モードに設定

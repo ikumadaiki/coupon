@@ -15,20 +15,20 @@ def main(predict_ps: bool) -> None:
     test_samples = 100_000
     n_features = 4
     delta = 0.0
-    ps_std = 0.0
-    rct_ratio = 0.3
+    ps_delta = 0.0
+    rct_ratio = 0.05
     batch_size = 256
     model_name = "Direct"
     model_params = {"input_dim": n_features}
-    method = "Direct_only_RCT"
+    method = "DR"
     only_rct = True if method == "Direct_only_RCT" else False
-    num_epochs_list = [150, 150]
-    lr_list = [0.0005, 0.0001]
+    num_epochs_list = [300, 150]
+    lr_list = [0.0001, 0.0001]
     dataset = DatasetGenerator(
         n_samples,
         n_features,
         delta,
-        ps_std=ps_std,
+        ps_delta=ps_delta,
         predict_ps=predict_ps,
         only_rct=only_rct,
         rct_ratio=rct_ratio,
@@ -42,7 +42,7 @@ def main(predict_ps: bool) -> None:
         test_samples,
         n_features,
         delta,
-        ps_std=ps_std,
+        ps_delta=ps_delta,
         seed=seed,
         model_name=model_name,
         batch_size=batch_size,

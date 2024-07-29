@@ -18,7 +18,7 @@ class DatasetGenerator:
         n_samples: int,
         n_features: int,
         delta: float,
-        ps_std: float,
+        ps_delta: float,
         predict_ps: bool,
         only_rct: bool,
         rct_ratio: float,
@@ -28,7 +28,7 @@ class DatasetGenerator:
         self.n_samples = n_samples
         self.n_features = n_features
         self.delta = delta
-        self.ps_std = ps_std
+        self.ps_delta = ps_delta
         self.predict_ps = predict_ps
         self.only_rct = only_rct
         self.rct_ratio = rct_ratio
@@ -43,7 +43,9 @@ class DatasetGenerator:
             dataset |= self.generate_treatment(dataset["features"], dataset["RCT_flag"])
             # auc_score = self.calculate_auc(dataset["T"], dataset["T_prob"])
             if self.predict_ps:
-                dataset |= self.predict_treatment(dataset["features"], dataset["T"], dataset["RCT_flag"])
+                dataset |= self.predict_treatment(
+                    dataset["features"], dataset["T"], dataset["RCT_flag"]
+                )
                 propensity_score = dataset["T_prob_pred"]
             else:
                 propensity_score = dataset["T_prob"]
@@ -96,13 +98,10 @@ class DatasetGenerator:
         self, features: NDArray[Any], rct_flag: NDArray[Any]
     ) -> Dict[str, NDArray[Any]]:
         np.random.seed(self.seed)
+        std = self.ps_delta * np.sqrt(np.pi / 2)
         T_prob = sigmoid(
-            (
-                np.sum(features, axis=1)
-                - 2.0
-                + np.random.normal(0, self.ps_std, size=len(features))
-            )
-            / 0.7
+            (np.sum(features, axis=1) - 2.0) / 0.7
+            + np.random.normal(0, std, size=len(features))
         )
         T_prob = T_prob.clip(0.01, 0.99)
         T_prob[rct_flag == 1] = 0.5

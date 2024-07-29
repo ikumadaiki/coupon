@@ -81,12 +81,6 @@ def cost_curve(
     normalized_values = incremental_values / incremental_values.max()
 
     # グラフ描画
-    plt.plot(normalized_costs, normalized_values, label=label)
-    plt.plot([0, 1], [0, 1], linestyle="--", color="gray")
-    plt.xlabel("Incremental Costs")
-    plt.ylabel("Incremental Values")
-    plt.legend()
-    plt.savefig("cost_curve.png")
 
     # 線形補間による関数の定義
     curve_function = interp1d(
@@ -103,6 +97,12 @@ def cost_curve(
         f"The area above y = x is approximately {area:.4f}, with an error of {error:.4e}."
     )
 
+    plt.plot(normalized_costs, normalized_values, label=f"{label}_{area:.4f}")
+    plt.plot([0, 1], [0, 1], linestyle="--", color="gray")
+    plt.xlabel("Incremental Costs")
+    plt.ylabel("Incremental Values")
+    plt.legend()
+    plt.savefig("cost_curve.png")
 
 # # 例として適用するデータ
 # incremental_costs = np.array([0, 0.25, 0.5, 0.75, 1])
