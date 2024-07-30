@@ -61,6 +61,10 @@ class DatasetGenerator:
                 propensity_score,
                 dataset["y_r"],
                 dataset["y_c"],
+                dataset["true_mu_r_1"],
+                dataset["true_mu_r_0"],
+                dataset["true_mu_c_1"],
+                dataset["true_mu_c_0"],
             )
             dataset |= self.culculate_ipw(
                 dataset["T"], propensity_score, dataset["y_r"], dataset["y_c"]
@@ -100,7 +104,7 @@ class DatasetGenerator:
         np.random.seed(self.seed)
         std = self.ps_delta * np.sqrt(np.pi / 2)
         T_prob = sigmoid(
-            (np.sum(features, axis=1) - 2.0) / 0.7
+            (np.sum(features, axis=1) - 2.0) / 1
             + np.random.normal(0, std, size=len(features))
         )
         T_prob = T_prob.clip(0.01, 0.99)
@@ -368,6 +372,10 @@ class DatasetGenerator:
         T_prob: NDArray[Any],
         y_r: NDArray[Any],
         y_c: NDArray[Any],
+        true_mu_r_1: NDArray[Any],
+        true_mu_r_0: NDArray[Any],
+        true_mu_c_1: NDArray[Any],
+        true_mu_c_0: NDArray[Any],
     ) -> Dict[str, NDArray[Any]]:
         # y_rとy_cの期待値を予測するモデルを学習
         treatment_mask = T == 1
@@ -392,21 +400,29 @@ class DatasetGenerator:
             treatment_features, treatment_visit
         )
 
+        mu_r_0_pred = mu_r_0.predict_proba(features)[:, 1]
+        mu_r_1_pred = mu_r_1.predict_proba(features)[:, 1]
+        mu_c_0_pred = mu_c_0.predict_proba(features)[:, 1]
+        mu_c_1_pred = mu_c_1.predict_proba(features)[:, 1]
+
         doubly_robust = {}
         doubly_robust["y_r_dr"] = np.where(
             T == 1,
-            (y_r - mu_r_1.predict_proba(features)[:, 1]) / T_prob
-            + mu_r_1.predict_proba(features)[:, 1],
-            (y_r - mu_r_0.predict_proba(features)[:, 1]) / (1 - T_prob)
-            + mu_r_0.predict_proba(features)[:, 1],
+            (y_r - mu_r_1_pred) / T_prob + mu_r_1_pred,
+            (y_r - mu_r_0_pred) / (1 - T_prob) + mu_r_0_pred,
         )
         doubly_robust["y_c_dr"] = np.where(
             T == 1,
-            (y_c - mu_c_1.predict_proba(features)[:, 1]) / T_prob
-            + mu_c_1.predict_proba(features)[:, 1],
-            (y_c - mu_c_0.predict_proba(features)[:, 1]) / (1 - T_prob)
-            + mu_c_0.predict_proba(features)[:, 1],
+            (y_c - mu_c_1_pred) / T_prob + mu_c_1_pred,
+            (y_c - mu_c_0_pred) / (1 - T_prob) + mu_c_0_pred,
         )
+        rmse_mu_r_0 = np.sqrt(np.mean((true_mu_r_0 - mu_r_0_pred) ** 2))
+        rmse_mu_r_1 = np.sqrt(np.mean((true_mu_r_1 - mu_r_1_pred) ** 2))
+        rmse_mu_c_0 = np.sqrt(np.mean((true_mu_c_0 - mu_c_0_pred) ** 2))
+        rmse_mu_c_1 = np.sqrt(np.mean((true_mu_c_1 - mu_c_1_pred) ** 2))
+        # import pdb
+
+        # pdb.set_trace()
 
         return doubly_robust
 

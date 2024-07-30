@@ -14,9 +14,10 @@ torch.manual_seed(42)
 
 
 class Trainer:
-    def __init__(self, num_epochs: int, lr: float):
+    def __init__(self, num_epochs: int, lr: float, weight_decay: float = 0.0) -> None:
         self.num_epochs = num_epochs
         self.lr = lr
+        self.weight_decay = weight_decay
 
     def train(
         self,
@@ -25,7 +26,9 @@ class Trainer:
         model: nn.Module,  # type: ignore
         method: str,
     ) -> nn.Module:  # type: ignore
-        optimizer = AdamW(model.parameters(), lr=self.lr)
+        optimizer = AdamW(
+            model.parameters(), lr=self.lr, weight_decay=self.weight_decay
+        )
         scheduler = get_cosine_schedule_with_warmup(
             optimizer,
             num_warmup_steps=0,
@@ -50,9 +53,17 @@ class Trainer:
                 loss = output["loss"].item()
                 total_train_loss += loss
                 count_batch += 1
-
-            scheduler.step()
+                scheduler.step()
+                average_loss = total_train_loss / count_batch
             train_loss_history.append(total_train_loss / count_batch)
+            # モデルのパラメータをprint
+            # if epoch % 10 == 0:
+            #     print(f"Parameters after epoch {epoch}:")
+            #     for name, param in model.named_parameters():
+            #         print(f"{name} - {param.size()}")
+            #         print(param.data)
+            #     import pdb; pdb.set_trace()
+
             model.eval()  # モデルを評価モードに設定
             total_val_loss = 0.0
             count_val_batch = 0

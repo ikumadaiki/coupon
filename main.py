@@ -17,13 +17,14 @@ def main(predict_ps: bool) -> None:
     delta = 0.0
     ps_delta = 0.0
     rct_ratio = 0.05
-    batch_size = 512
+    batch_size = 128
+    weight_decay = 1
     model_name = "Direct"
     model_params = {"input_dim": n_features}
     method = "DR"
     only_rct = True if method == "Direct_only_RCT" else False
-    num_epochs_list = [5, 300]
-    lr_list = [0.005, 0.00005]
+    num_epochs_list = [100, 300]
+    lr_list = [0.0001, 0.00005]
     dataset = DatasetGenerator(
         n_samples,
         n_features,
@@ -83,7 +84,9 @@ def main(predict_ps: bool) -> None:
             seed=seed,
         )
     trainer = Trainer(
-        num_epochs=num_epochs_list[int(only_rct)], lr=lr_list[int(only_rct)]
+        num_epochs=num_epochs_list[int(only_rct)],
+        lr=lr_list[int(only_rct)],
+        weight_decay=weight_decay,
     )
     model = trainer.train(train_dl=train_dl, val_dl=val_dl, model=model, method=method)
     trainer.save_model(model, f"model_{method}.pth")
