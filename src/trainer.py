@@ -81,7 +81,6 @@ class Trainer:
                 output = model(**batch)
                 pred: torch.Tensor = output["pred"]
                 predictions.append(pred.detach().cpu().numpy())
-
             return np.concatenate(predictions, axis=0)
 
     def save_model(self, model: nn.Module, path: str) -> None:

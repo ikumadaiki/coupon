@@ -17,13 +17,13 @@ def main(predict_ps: bool) -> None:
     delta = 0.0
     ps_delta = 0.0
     rct_ratio = 0.05
-    batch_size = 256
+    batch_size = 512
     model_name = "Direct"
     model_params = {"input_dim": n_features}
     method = "DR"
     only_rct = True if method == "Direct_only_RCT" else False
-    num_epochs_list = [300, 150]
-    lr_list = [0.0001, 0.0001]
+    num_epochs_list = [5, 300]
+    lr_list = [0.005, 0.00005]
     dataset = DatasetGenerator(
         n_samples,
         n_features,

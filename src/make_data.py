@@ -153,7 +153,7 @@ class DatasetGenerator:
     def visit_effect(self, features: NDArray[Any]) -> Tuple[NDArray[Any], NDArray[Any]]:
         baseline_effect = np.dot(features[:, :2], np.random.uniform(0.7, 1.0, 2)) - 1.5
         interaction_effect = np.exp(
-            np.dot(features[:, 2:4], np.random.uniform(0.3, 0.5, 2))
+            np.dot(features[:, 3].reshape(-1, 1), np.random.uniform(0.3, 0.5, 1))
             + 0.2 * features[:, 0]
         )
         return baseline_effect, interaction_effect

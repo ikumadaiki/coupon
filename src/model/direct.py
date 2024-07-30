@@ -170,7 +170,7 @@ class DirectNonLinear(nn.Module):
 def custom_loss(
     y_r: torch.Tensor, y_c: torch.Tensor, q: torch.Tensor, group_size: int
 ) -> torch.Tensor:
-    q = torch.clamp(q, 1e-8, 1 - 1e-8)  # (N, 1)
+    q = torch.clamp(q, 1e-2, 1 - 1e-2)  # (N, 1)
     logit_q = torch.log(q / (1 - q))  # (N, 1)
 
     loss = -torch.sum(y_r * logit_q + y_c * torch.log(1 - q)) / group_size
