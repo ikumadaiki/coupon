@@ -15,16 +15,16 @@ def main(predict_ps: bool, validate: bool) -> None:
     test_samples = 100_000
     n_features = 4
     delta = 0.0
-    ps_delta = 0.1
-    rct_ratio = 0.15
+    ps_delta = 0.1  # 3パターン
+    rct_ratio = 0.05  # 8パターン # Direct:rct_ratioは大きい方がいい
     batch_size = 8
     weight_decay = 1e-2
     model_name = "Direct"
     model_params = {"input_dim": n_features}
-    method = "DR"
+    method = "Direct"
     only_rct = True if method == "Direct_only_RCT" else False
     num_epochs_list = [50, 50]
-    lr_list = [0.0001, 0.0001]
+    lr_list = [0.0001, 0.00001]
     dataset = DatasetGenerator(
         n_samples,
         n_features,
@@ -54,7 +54,7 @@ def main(predict_ps: bool, validate: bool) -> None:
             train_dl = make_loader(
                 train_dataset,
                 model_name=model_name,
-                batch_size=len(train_dataset),
+                batch_size=batch_size,
                 train_flg=True,
                 method="Direct",
                 seed=seed,
@@ -62,7 +62,7 @@ def main(predict_ps: bool, validate: bool) -> None:
             val_dl = make_loader(
                 val_dataset,
                 model_name=model_name,
-                batch_size=len(val_dataset),
+                batch_size=batch_size,
                 train_flg=True,
                 method="Direct",
                 seed=seed,
@@ -90,7 +90,9 @@ def main(predict_ps: bool, validate: bool) -> None:
         weight_decay=weight_decay,
     )
     if not validate:
-        model = trainer.train(train_dl=train_dl, val_dl=val_dl, model=model, method=method)
+        model = trainer.train(
+            train_dl=train_dl, val_dl=val_dl, model=model, method=method
+        )
         trainer.save_model(model, f"model_{method}.pth")
 
     inference(

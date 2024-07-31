@@ -44,7 +44,7 @@ class DatasetGenerator:
             # auc_score = self.calculate_auc(dataset["T"], dataset["T_prob"])
             if self.predict_ps:
                 dataset |= self.predict_treatment(
-                    dataset["features"], dataset["T"], dataset["RCT_flag"]
+                    dataset["features"], dataset["T_prob"], dataset["RCT_flag"]
                 )
                 propensity_score = dataset["T_prob_pred"]
             else:
@@ -102,11 +102,7 @@ class DatasetGenerator:
         self, features: NDArray[Any], rct_flag: NDArray[Any]
     ) -> Dict[str, NDArray[Any]]:
         np.random.seed(self.seed)
-        std = self.ps_delta * np.sqrt(np.pi / 2)
-        T_prob = sigmoid(
-            (np.dot(features, np.array([1.5, 1.0, 0.5, 0.8])) - 2.0) / 1
-            + np.random.normal(0, std, size=len(features))
-        )
+        T_prob = sigmoid((np.dot(features, np.array([1.5, 1.0, 0.5, 0.8])) - 2.0) / 1)
         T_prob = T_prob.clip(0.01, 0.99)
         T_prob[rct_flag == 1] = 0.5
         T: NDArray[Any] = np.random.binomial(1, T_prob).astype(bool)
@@ -128,12 +124,11 @@ class DatasetGenerator:
     def predict_treatment(
         self,
         features: NDArray[Any],
-        T: NDArray[Any],
+        T_prob: NDArray[Any],
         rct_flag: NDArray[Any],
     ) -> Dict[str, NDArray[Any]]:
-        lgb = LGBMClassifier(verbose=-1, random_state=42)
-        lgb.fit(features, T)
-        T_prob_pred = lgb.predict_proba(features)[:, 1]
+        std = self.ps_delta * np.sqrt(np.pi / 2)
+        T_prob_pred = T_prob + +np.random.normal(0, std, size=len(features))
         T_prob_pred[rct_flag == 1] = 0.5
         T_prob_pred = T_prob_pred.clip(0.01, 0.99)
         return {"T_prob_pred": T_prob_pred}
