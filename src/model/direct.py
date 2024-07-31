@@ -123,12 +123,12 @@ class DirectNonLinear(nn.Module):
     def __init__(self, input_dim: int) -> None:
         super(DirectNonLinear, self).__init__()
         self.mlp = nn.Sequential(
-            nn.Linear(input_dim, 2 * input_dim),
+            nn.Linear(input_dim, input_dim),
             nn.ReLU(),
-            nn.Dropout(0.5),
-            nn.Linear(2 * input_dim, input_dim),
-            nn.ReLU(),
-            nn.Dropout(0.5),
+            nn.Dropout(0.3),
+            # nn.Linear(2 * input_dim, input_dim),
+            # nn.ReLU(),
+            # nn.Dropout(0.3),
             # nn.Linear(input_dim, int(0.5 * input_dim)),
             # nn.ReLU(),
             # nn.Dropout(0.1),

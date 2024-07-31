@@ -13,9 +13,9 @@ def get_roi_tpmsl(
     X = np.concatenate(
         [train_dataset["features"], train_dataset["T"].reshape(-1, 1)], axis=1
     )
-    reg_r = LGBMClassifier(verbose=-1, random_state=42)
+    reg_r = LGBMClassifier(verbose=-1, random_state=0)
     reg_r.fit(X, train_dataset["y_r"])
-    reg_c = LGBMClassifier(verbose=-1, random_state=42)
+    reg_c = LGBMClassifier(verbose=-1, random_state=0)
     reg_c.fit(X, train_dataset["y_c"])
     X_0 = np.hstack(
         [test_dataset["features"], np.zeros((len(test_dataset["features"]), 1))]

@@ -41,7 +41,7 @@ class Trainer:
             model.train()
             total_train_loss: float = 0.0
             count_batch: int = 0
-            average_loss = 0
+            average_loss: float = 0.0
             total = len(train_dl)
             desc = f"Epoch {epoch} AVG Loss: {average_loss:.4f}"
             for batch in tqdm(train_dl, desc=desc, leave=False):
@@ -73,7 +73,7 @@ class Trainer:
                     val_loss = val_output["loss"].item()
                     total_val_loss += val_loss
                     count_val_batch += 1
-            val_loss_history.append(total_val_loss / count_val_batch)
+                val_loss_history.append(total_val_loss / count_val_batch)
 
         plt.clf()
         plt.plot(train_loss_history, label="Train")

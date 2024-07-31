@@ -9,7 +9,7 @@ from src.trainer import Trainer
 torch.manual_seed(42)
 
 
-def main(predict_ps: bool) -> None:
+def main(predict_ps: bool, validate: bool) -> None:
     seed = 42
     n_samples = 100_000
     test_samples = 100_000
@@ -17,14 +17,14 @@ def main(predict_ps: bool) -> None:
     delta = 0.0
     ps_delta = 0.0
     rct_ratio = 0.05
-    batch_size = 128
-    weight_decay = 1
+    batch_size = 16
+    weight_decay = 1e-2
     model_name = "Direct"
     model_params = {"input_dim": n_features}
-    method = "DR"
+    method = "Direct_only_RCT"
     only_rct = True if method == "Direct_only_RCT" else False
-    num_epochs_list = [100, 300]
-    lr_list = [0.0001, 0.00005]
+    num_epochs_list = [50, 100]
+    lr_list = [0.0001, 0.001]
     dataset = DatasetGenerator(
         n_samples,
         n_features,
@@ -49,47 +49,59 @@ def main(predict_ps: bool) -> None:
         batch_size=batch_size,
         method=None,
     )
-    if only_rct:
-        train_dl = make_loader(
-            train_dataset,
-            model_name=model_name,
-            batch_size=len(train_dataset),
-            train_flg=True,
-            method="Direct",
-            seed=seed,
-        )
-        val_dl = make_loader(
-            val_dataset,
-            model_name=model_name,
-            batch_size=len(val_dataset),
-            train_flg=True,
-            method="Direct",
-            seed=seed,
-        )
-    else:
-        train_dl = make_loader(
-            train_dataset,
-            model_name=model_name,
-            batch_size=batch_size,
-            train_flg=True,
-            method=method,
-            seed=seed,
-        )
-        val_dl = make_loader(
-            val_dataset,
-            model_name=model_name,
-            batch_size=batch_size,
-            train_flg=True,
-            method=method,
-            seed=seed,
-        )
+    test_dataset = val_dataset
+    test_dl = make_loader(
+        test_dataset,
+        model_name=model_name,
+        batch_size=batch_size,
+        train_flg=False,
+        method="Direct",
+        seed=seed,
+    )
+    if not validate:
+        if only_rct:
+            train_dl = make_loader(
+                train_dataset,
+                model_name=model_name,
+                batch_size=len(train_dataset),
+                train_flg=True,
+                method="Direct",
+                seed=seed,
+            )
+            val_dl = make_loader(
+                val_dataset,
+                model_name=model_name,
+                batch_size=len(val_dataset),
+                train_flg=True,
+                method="Direct",
+                seed=seed,
+            )
+        else:
+            train_dl = make_loader(
+                train_dataset,
+                model_name=model_name,
+                batch_size=batch_size,
+                train_flg=True,
+                method=method,
+                seed=seed,
+            )
+            val_dl = make_loader(
+                val_dataset,
+                model_name=model_name,
+                batch_size=batch_size,
+                train_flg=True,
+                method=method,
+                seed=seed,
+            )
     trainer = Trainer(
         num_epochs=num_epochs_list[int(only_rct)],
         lr=lr_list[int(only_rct)],
         weight_decay=weight_decay,
     )
-    model = trainer.train(train_dl=train_dl, val_dl=val_dl, model=model, method=method)
-    trainer.save_model(model, f"model_{method}.pth")
+    if not validate:
+        model = trainer.train(train_dl=train_dl, val_dl=val_dl, model=model, method=method)
+        trainer.save_model(model, f"model_{method}.pth")
+
     inference(
         n_features=n_features,
         train_dataset=train_dataset,
@@ -99,4 +111,4 @@ def main(predict_ps: bool) -> None:
 
 
 if __name__ == "__main__":
-    main(predict_ps=True)
+    main(predict_ps=True, validate=False)
