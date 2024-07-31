@@ -36,18 +36,18 @@ def get_roi_tpmsl(
     rmse_tau_r = np.sqrt(np.mean((test_dataset["true_tau_r"] - tau_r) ** 2))
     rmse_tau_c = np.sqrt(np.mean((test_dataset["true_tau_c"] - tau_c) ** 2))
     # AUCを計算
-    auc_mu_r_0 = roc_auc_score(
-        np.round(np.clip(test_dataset["true_mu_r_0"], 0, 1)), mu_r_0
-    )
-    auc_mu_r_1 = roc_auc_score(
-        np.round(np.clip(test_dataset["true_mu_r_1"], 0, 1)), mu_r_1
-    )
-    auc_mu_c_0 = roc_auc_score(
-        np.round(np.clip(test_dataset["true_mu_c_0"], 0, 1)), mu_c_0
-    )
-    auc_mu_c_1 = roc_auc_score(
-        np.round(np.clip(test_dataset["true_mu_c_1"], 0, 1)), mu_c_1
-    )
+    # auc_mu_r_0 = roc_auc_score(
+    #     np.round(np.clip(test_dataset["true_mu_r_0"], 0, 1)), mu_r_0
+    # )
+    # auc_mu_r_1 = roc_auc_score(
+    #     np.round(np.clip(test_dataset["true_mu_r_1"], 0, 1)), mu_r_1
+    # )
+    # auc_mu_c_0 = roc_auc_score(
+    #     np.round(np.clip(test_dataset["true_mu_c_0"], 0, 1)), mu_c_0
+    # )
+    # auc_mu_c_1 = roc_auc_score(
+    #     np.round(np.clip(test_dataset["true_mu_c_1"], 0, 1)), mu_c_1
+    # )
 
     roi_tpmsl = tau_r / tau_c
     scaler = MinMaxScaler()

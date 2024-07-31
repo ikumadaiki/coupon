@@ -104,7 +104,7 @@ class DatasetGenerator:
         np.random.seed(self.seed)
         std = self.ps_delta * np.sqrt(np.pi / 2)
         T_prob = sigmoid(
-            (np.sum(features, axis=1) - 2.0) / 1
+            (np.dot(features, np.array([1.5, 1.0, 0.5, 0.8])) - 2.0) / 1
             + np.random.normal(0, std, size=len(features))
         )
         T_prob = T_prob.clip(0.01, 0.99)
@@ -184,7 +184,7 @@ class DatasetGenerator:
         baseline_effect, interaction_effect = self.visit_effect(features)
         std = self.delta * np.sqrt(np.pi / 2)
         noise = np.random.normal(0, std, size=len(features))
-        a = 2.0
+        a = 3.0
         if self.train_flg:
             treatment_effect = T * interaction_effect
             prob_visit = np.clip(
@@ -279,7 +279,7 @@ class DatasetGenerator:
         baseline_effect, interaction_effect = self.conversion_effect(features)
         std = self.delta * np.sqrt(np.pi / 2)
         noise = np.random.normal(0, std, size=len(features))
-        a = 2.0
+        a = 4.0
         if self.train_flg:
             treatment_effect = T * interaction_effect
             prob_purchase = np.clip(

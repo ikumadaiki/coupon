@@ -15,16 +15,16 @@ def main(predict_ps: bool, validate: bool) -> None:
     test_samples = 100_000
     n_features = 4
     delta = 0.0
-    ps_delta = 0.0
-    rct_ratio = 0.05
-    batch_size = 16
+    ps_delta = 0.1
+    rct_ratio = 0.15
+    batch_size = 8
     weight_decay = 1e-2
     model_name = "Direct"
     model_params = {"input_dim": n_features}
-    method = "Direct_only_RCT"
+    method = "DR"
     only_rct = True if method == "Direct_only_RCT" else False
-    num_epochs_list = [50, 100]
-    lr_list = [0.0001, 0.001]
+    num_epochs_list = [50, 50]
+    lr_list = [0.0001, 0.0001]
     dataset = DatasetGenerator(
         n_samples,
         n_features,
@@ -48,15 +48,6 @@ def main(predict_ps: bool, validate: bool) -> None:
         model_name=model_name,
         batch_size=batch_size,
         method=None,
-    )
-    test_dataset = val_dataset
-    test_dl = make_loader(
-        test_dataset,
-        model_name=model_name,
-        batch_size=batch_size,
-        train_flg=False,
-        method="Direct",
-        seed=seed,
     )
     if not validate:
         if only_rct:
