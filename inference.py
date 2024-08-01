@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import torch
 from torch.utils.data import DataLoader
 
-from src.evaluate.evaluate import calculate_values, cost_curve
+from src.evaluate.evaluate import calculate_values, cost_curve, optimize_alpha
 from src.make_data import DatasetGenerator
 from src.model.common import get_model, make_loader
 from src.model.tpmsl_lgbm import get_roi_tpmsl
@@ -43,10 +43,16 @@ def load_test_data(
 
 
 def inference(
-    n_features: int, train_dataset: dict, test_dataset: dict, test_dl: DataLoader
+    n_features: int,
+    ps_delta: float,
+    rct_ratio: float,
+    train_dataset: dict,
+    test_dataset: dict,
+    test_dl: DataLoader,
 ) -> None:
     roi_dic = {}
     method_list = ["DR", "Direct", "Direct_only_RCT"]
+    method_list = ["DR"]
     for method in method_list:
         path = f"model_{method}.pth"
         # モデルの読み込み
@@ -58,6 +64,13 @@ def inference(
         incremental_costs, incremental_values = calculate_values(
             predictions, test_dataset["true_tau_r"], test_dataset["true_tau_c"]
         )
+        incremental_costs_alpha, incremental_values_alpha = optimize_alpha(
+            rct_ratio,
+            predictions,
+            test_dataset["true_tau_r"],
+            test_dataset["true_tau_c"],
+        )
+    import pdb; pdb.set_trace()
     roi_tpmsl = get_roi_tpmsl(
         train_dataset,
         test_dataset,
@@ -69,4 +82,5 @@ def inference(
         incremental_costs, incremental_values = calculate_values(
             roi_dic[roi], test_dataset["true_tau_r"], test_dataset["true_tau_c"]
         )
-        cost_curve(incremental_costs, incremental_values, label=roi)
+        cost_curve(rct_ratio, incremental_costs, incremental_values, label=roi, alpha=False)
+    cost_curve(rct_ratio, incremental_costs_alpha, incremental_values_alpha, label="DR_alpha", alpha=True)

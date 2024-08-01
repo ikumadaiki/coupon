@@ -15,16 +15,16 @@ def main(predict_ps: bool, validate: bool) -> None:
     test_samples = 100_000
     n_features = 4
     delta = 0.0
-    ps_delta = 0.1  # 3パターン
+    ps_delta = 0.3  # 4パターン
     rct_ratio = 0.05  # 8パターン # Direct:rct_ratioは大きい方がいい
     batch_size = 8
     weight_decay = 1e-2
     model_name = "Direct"
     model_params = {"input_dim": n_features}
-    method = "Direct"
+    method = "DR"
     only_rct = True if method == "Direct_only_RCT" else False
     num_epochs_list = [50, 50]
-    lr_list = [0.0001, 0.00001]
+    lr_list = [0.00001, 0.00001]
     dataset = DatasetGenerator(
         n_samples,
         n_features,
@@ -97,6 +97,8 @@ def main(predict_ps: bool, validate: bool) -> None:
 
     inference(
         n_features=n_features,
+        ps_delta=ps_delta,
+        rct_ratio=rct_ratio,
         train_dataset=train_dataset,
         test_dataset=test_dataset,
         test_dl=test_dl,
@@ -104,4 +106,4 @@ def main(predict_ps: bool, validate: bool) -> None:
 
 
 if __name__ == "__main__":
-    main(predict_ps=True, validate=False)
+    main(predict_ps=True, validate=True)

@@ -84,8 +84,9 @@ class DatasetGenerator:
             rct_flag = np.ones(int(self.n_samples * self.rct_ratio))
         else:
             rct_flag = np.zeros(self.n_samples)
-            for i in range(0, self.n_samples, int(1 / self.rct_ratio)):
-                rct_flag[i] = 1
+            if self.rct_ratio > 0:
+                for i in range(0, self.n_samples, int(1 / self.rct_ratio)):
+                    rct_flag[i] = 1
         return {"RCT_flag": rct_flag}
 
     def generate_feature(self) -> Dict[str, NDArray[Any]]:

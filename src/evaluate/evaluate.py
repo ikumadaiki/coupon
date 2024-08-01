@@ -75,9 +75,15 @@ def calculate_values(
 
 
 def cost_curve(
-    incremental_costs: NDArray[Any], incremental_values: NDArray[Any], label: str
+    rct_ratio: float,
+    incremental_costs: NDArray[Any],
+    incremental_values: NDArray[Any],
+    label: str,
+    alpha: bool = False,
 ) -> None:
     normalized_costs = incremental_costs / incremental_costs.max()
+    if alpha:
+        incremental_values += rct_ratio * normalized_costs
     normalized_values = incremental_values / incremental_values.max()
 
     # グラフ描画
@@ -103,6 +109,42 @@ def cost_curve(
     plt.ylabel("Incremental Values")
     plt.legend()
     plt.savefig("cost_curve.png")
+
+
+def optimize_alpha(
+    rct_ratio: float,
+    roi_scores: NDArray[Any],
+    true_tau_r: NDArray[Any],
+    true_tau_c: NDArray[Any],
+) -> Tuple[Any, Any]:
+    random_treatment_indices = int(len(roi_scores) * rct_ratio)
+    model_based_treatment = roi_scores[random_treatment_indices:]
+    sorted_indices = np.argsort(model_based_treatment)[::-1] + random_treatment_indices
+    p_values = np.linspace(0, 1, 50)
+    incremental_costs = []
+    incremental_values = []
+    import pdb; pdb.set_trace()
+
+    for p in p_values:
+        top_p_indices = sorted_indices[: int(p * len(model_based_treatment))]
+
+        # ATE (Average Treatment Effect) の計算
+        ATE_Yr = np.mean(true_tau_r[top_p_indices])
+        ATE_Yc = np.mean(true_tau_c[top_p_indices])
+
+        incremental_costs.append(ATE_Yc * len(top_p_indices))
+        incremental_values.append((1 - rct_ratio) * ATE_Yr * len(top_p_indices))
+        # print(ATE_Yr , ATE_Yc,np.sum(treatment_indices))
+    # nanがあれば0に変換
+    incremental_costs = np.array(incremental_costs)
+    incremental_values = np.array(incremental_values)
+    incremental_costs[np.isnan(incremental_costs)] = 0
+    incremental_values[np.isnan(incremental_values)] = 0
+    incremental_costs[0] = 0
+    incremental_values[0] = 0
+
+    return incremental_costs, incremental_values
+
 
 # # 例として適用するデータ
 # incremental_costs = np.array([0, 0.25, 0.5, 0.75, 1])
