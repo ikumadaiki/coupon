@@ -16,9 +16,9 @@ def main(predict_ps: bool, validate: bool) -> None:
     n_features = 4
     delta = 0.0
     ps_delta = 0.3  # 4パターン
-    rct_ratio = 0.05  # 8パターン # Direct:rct_ratioは大きい方がいい
+    rct_ratio = 0.1  # 8パターン # Direct:rct_ratioは大きい方がいい
     batch_size = 8
-    weight_decay = 1e-2
+    weight_decay = 1e-3
     model_name = "Direct"
     model_params = {"input_dim": n_features}
     method = "DR"
@@ -106,4 +106,4 @@ def main(predict_ps: bool, validate: bool) -> None:
 
 
 if __name__ == "__main__":
-    main(predict_ps=True, validate=True)
+    main(predict_ps=True, validate=False)

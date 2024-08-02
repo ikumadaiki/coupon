@@ -123,7 +123,6 @@ def optimize_alpha(
     p_values = np.linspace(0, 1, 50)
     incremental_costs = []
     incremental_values = []
-    import pdb; pdb.set_trace()
 
     for p in p_values:
         top_p_indices = sorted_indices[: int(p * len(model_based_treatment))]

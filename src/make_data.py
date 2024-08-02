@@ -2,9 +2,7 @@ from typing import Any, Dict, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
-from lightgbm import LGBMClassifier
 from numpy.typing import NDArray
-from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import train_test_split
 
 
@@ -56,7 +54,6 @@ class DatasetGenerator:
                 dataset["features"], dataset["T"], dataset["y_c"]
             )
             dataset |= self.culculate_doubly_robust(
-                dataset["features"],
                 dataset["T"],
                 propensity_score,
                 dataset["y_r"],
@@ -134,14 +131,6 @@ class DatasetGenerator:
         T_prob_pred = T_prob_pred.clip(0.01, 0.99)
         return {"T_prob_pred": T_prob_pred}
 
-    # T_Prob_predのAUCを計算
-    def calculate_auc(
-        self,
-        T: NDArray[Any],
-        T_prob_pred: NDArray[Any],
-    ) -> float:
-        return float(roc_auc_score(T, T_prob_pred))
-
     # T_ProbとT_Prob_predのRMSEを計算
     def calculate_rmse(
         self,
@@ -178,13 +167,11 @@ class DatasetGenerator:
         np.random.seed(self.seed)
 
         baseline_effect, interaction_effect = self.visit_effect(features)
-        std = self.delta * np.sqrt(np.pi / 2)
-        noise = np.random.normal(0, std, size=len(features))
         a = 3.0
         if self.train_flg:
             treatment_effect = T * interaction_effect
             prob_visit = np.clip(
-                sigmoid((baseline_effect + treatment_effect - a) / (a)) + noise,
+                sigmoid((baseline_effect + treatment_effect - a) / (a)),
                 0.01,
                 0.99,
             )
@@ -200,28 +187,24 @@ class DatasetGenerator:
             prob_visit_treatment = np.clip(
                 sigmoid(
                     (baseline_effect_treatment + interaction_effect_treatment - a) / (a)
-                )
-                + noise[: len(treatment_features)],
+                ),
                 0.01,
                 0.99,
             )
             prob_visit_control = np.clip(
-                sigmoid((baseline_effect_control - a) / (a))
-                + noise[len(treatment_features) :],
+                sigmoid((baseline_effect_control - a) / (a)),
                 0.01,
                 0.99,
             )
             prob_visit_treatment_if_non_treatment = np.clip(
-                sigmoid((baseline_effect_treatment - a) / (a))
-                + noise[: len(treatment_features)],
+                sigmoid((baseline_effect_treatment - a) / (a)),
                 0.01,
                 0.99,
             )
             prpb_visit_control_if_treatment = np.clip(
                 sigmoid(
-                    (baseline_effect_control + interaction_effect_control - a) / (a)
-                )
-                + noise[len(treatment_features) :],
+                    (baseline_effect_control + interaction_effect_control - a) / (a),
+                ),
                 0.01,
                 0.99,
             )
@@ -246,8 +229,8 @@ class DatasetGenerator:
         # import pdb
 
         # pdb.set_trace()
-        true_mu_c_1 = sigmoid(baseline_effect + interaction_effect - a) + noise
-        true_mu_c_0 = sigmoid(baseline_effect - a) + noise
+        true_mu_c_1 = sigmoid((baseline_effect + interaction_effect - a) / (a))
+        true_mu_c_0 = sigmoid((baseline_effect - a) / (a))
         true_tau_c = true_mu_c_1 - true_mu_c_0
 
         if self.train_flg:
@@ -273,13 +256,11 @@ class DatasetGenerator:
         np.random.seed(self.seed)
 
         baseline_effect, interaction_effect = self.conversion_effect(features)
-        std = self.delta * np.sqrt(np.pi / 2)
-        noise = np.random.normal(0, std, size=len(features))
         a = 4.0
         if self.train_flg:
             treatment_effect = T * interaction_effect
             prob_purchase = np.clip(
-                sigmoid((baseline_effect + treatment_effect - a) / (a)) + noise,
+                sigmoid((baseline_effect + treatment_effect - a) / (a)),
                 0.01,
                 0.99,
             )
@@ -294,27 +275,23 @@ class DatasetGenerator:
             prob_purchase_treatment = np.clip(
                 sigmoid(
                     (baseline_effect_treatment + interaction_effect_treatment - a) / (a)
-                )
-                + noise[: len(treatment_features)],
+                ),
                 0.01,
                 0.99,
             )
             prob_purchase_control = np.clip(
-                sigmoid((baseline_effect_control - a) / (a))
-                + noise[len(treatment_features) :],
+                sigmoid((baseline_effect_control - a) / (a)),
                 0.01,
                 0.99,
             )
             prob_purchase_treatment_if_non_treatment = np.clip(
-                sigmoid((baseline_effect_treatment - a) / (a))
-                + noise[: len(treatment_features)],
+                sigmoid((baseline_effect_treatment - a) / (a)),
                 0.01,
                 0.99,
             )
             prob_purchace_control_if_treatment = np.clip(
                 sigmoid(
                     (baseline_effect_control + interaction_effect_control - a) / (a)
-                    + noise[len(treatment_features) :]
                 ),
                 0.01,
                 0.99,
@@ -344,8 +321,8 @@ class DatasetGenerator:
         # import pdb
 
         # pdb.set_trace()
-        true_mu_r_1 = sigmoid(baseline_effect + interaction_effect - a) + noise
-        true_mu_r_0 = sigmoid(baseline_effect - a) + noise
+        true_mu_r_1 = sigmoid((baseline_effect + interaction_effect - a) / (a))
+        true_mu_r_0 = sigmoid((baseline_effect - a) / (a))
         true_tau_r = true_mu_r_1 - true_mu_r_0
         if self.train_flg:
             return {
@@ -363,7 +340,6 @@ class DatasetGenerator:
 
     def culculate_doubly_robust(
         self,
-        features: NDArray[Any],
         T: NDArray[Any],
         T_prob: NDArray[Any],
         y_r: NDArray[Any],
@@ -373,49 +349,17 @@ class DatasetGenerator:
         true_mu_c_1: NDArray[Any],
         true_mu_c_0: NDArray[Any],
     ) -> Dict[str, NDArray[Any]]:
-        # y_rとy_cの期待値を予測するモデルを学習
-        treatment_mask = T == 1
-        control_mask = T == 0
-        treatment_features = features[treatment_mask]
-        control_features = features[control_mask]
-        treatment_purchase = y_r[treatment_mask]
-        control_purchase = y_r[control_mask]
-        treatment_visit = y_c[treatment_mask]
-        control_visit = y_c[control_mask]
-
-        mu_r_0 = LGBMClassifier(verbose=-1, random_state=42).fit(
-            control_features, control_purchase
-        )
-        mu_r_1 = LGBMClassifier(verbose=-1, random_state=42).fit(
-            treatment_features, treatment_purchase
-        )
-        mu_c_0 = LGBMClassifier(verbose=-1, random_state=42).fit(
-            control_features, control_visit
-        )
-        mu_c_1 = LGBMClassifier(verbose=-1, random_state=42).fit(
-            treatment_features, treatment_visit
-        )
-
-        mu_r_0_pred = mu_r_0.predict_proba(features)[:, 1]
-        mu_r_1_pred = mu_r_1.predict_proba(features)[:, 1]
-        mu_c_0_pred = mu_c_0.predict_proba(features)[:, 1]
-        mu_c_1_pred = mu_c_1.predict_proba(features)[:, 1]
-
         doubly_robust = {}
         doubly_robust["y_r_dr"] = np.where(
             T == 1,
-            (y_r - mu_r_1_pred) / T_prob + mu_r_1_pred,
-            (y_r - mu_r_0_pred) / (1 - T_prob) + mu_r_0_pred,
+            (y_r - true_mu_r_1) / T_prob + true_mu_r_1,
+            (y_r - true_mu_r_0) / (1 - T_prob) + true_mu_r_0,
         )
         doubly_robust["y_c_dr"] = np.where(
             T == 1,
-            (y_c - mu_c_1_pred) / T_prob + mu_c_1_pred,
-            (y_c - mu_c_0_pred) / (1 - T_prob) + mu_c_0_pred,
+            (y_c - true_mu_c_1) / T_prob + true_mu_c_1,
+            (y_c - true_mu_c_0) / (1 - T_prob) + true_mu_c_0,
         )
-        rmse_mu_r_0 = np.sqrt(np.mean((true_mu_r_0 - mu_r_0_pred) ** 2))
-        rmse_mu_r_1 = np.sqrt(np.mean((true_mu_r_1 - mu_r_1_pred) ** 2))
-        rmse_mu_c_0 = np.sqrt(np.mean((true_mu_c_0 - mu_c_0_pred) ** 2))
-        rmse_mu_c_1 = np.sqrt(np.mean((true_mu_c_1 - mu_c_1_pred) ** 2))
         # import pdb
 
         # pdb.set_trace()

@@ -70,7 +70,6 @@ def inference(
             test_dataset["true_tau_r"],
             test_dataset["true_tau_c"],
         )
-    import pdb; pdb.set_trace()
     roi_tpmsl = get_roi_tpmsl(
         train_dataset,
         test_dataset,
