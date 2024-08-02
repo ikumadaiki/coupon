@@ -21,10 +21,10 @@ def main(predict_ps: bool, validate: bool) -> None:
     weight_decay = 1e-3
     model_name = "Direct"
     model_params = {"input_dim": n_features}
-    method = "DR"
+    method = "Direct"
     only_rct = True if method == "Direct_only_RCT" else False
-    num_epochs_list = [100, 50]
-    lr_list = [0.00005, 0.00001]
+    num_epochs_list = [50, 50]
+    lr_list = [0.001, 0.00001]
     dataset = DatasetGenerator(
         n_samples,
         n_features,

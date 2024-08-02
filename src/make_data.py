@@ -169,11 +169,11 @@ class DatasetGenerator:
         np.random.seed(self.seed)
 
         baseline_effect, interaction_effect = self.visit_effect(features)
-        a = 2.0
+        a = 1.0
         if self.train_flg:
             treatment_effect = T * interaction_effect
             prob_visit = np.clip(
-                sigmoid((baseline_effect + treatment_effect - a) / (a)),
+                sigmoid((baseline_effect + treatment_effect - a) / (0.5 * a)),
                 0.01,
                 0.99,
             )
@@ -187,14 +187,14 @@ class DatasetGenerator:
                 control_features
             )
             prob_visit_treatment = sigmoid(
-                (baseline_effect_treatment + interaction_effect_treatment - a) / (a)
+                (baseline_effect_treatment + interaction_effect_treatment - a) / (0.5 * a)
             )
-            prob_visit_control = sigmoid((baseline_effect_control - a) / (a))
+            prob_visit_control = sigmoid((baseline_effect_control - a) / (0.5 * a))
             prob_visit_treatment_if_non_treatment = sigmoid(
-                (baseline_effect_treatment - a) / (a)
+                (baseline_effect_treatment - a) / (0.5 * a)
             )
             prpb_visit_control_if_treatment = sigmoid(
-                (baseline_effect_control + interaction_effect_control - a) / (a),
+                (baseline_effect_control + interaction_effect_control - a) / (0.5 * a),
             )
 
             plt.clf()
@@ -218,9 +218,9 @@ class DatasetGenerator:
 
         # pdb.set_trace()
         true_mu_c_1 = np.clip(
-            sigmoid((baseline_effect + interaction_effect - a) / (a)), 0.01, 0.99
+            sigmoid((baseline_effect + interaction_effect - a) / (0.5 * a)), 0.01, 0.99
         )
-        true_mu_c_0 = np.clip(sigmoid((baseline_effect - a) / (a)), 0.01, 0.99)
+        true_mu_c_0 = np.clip(sigmoid((baseline_effect - a) / (0.5 * a)), 0.01, 0.99)
         true_tau_c = true_mu_c_1 - true_mu_c_0
 
         if self.train_flg:
@@ -246,11 +246,11 @@ class DatasetGenerator:
         np.random.seed(self.seed)
 
         baseline_effect, interaction_effect = self.conversion_effect(features)
-        a = 2.0
+        a = 1.0
         if self.train_flg:
             treatment_effect = T * interaction_effect
             prob_purchase = np.clip(
-                sigmoid((baseline_effect + treatment_effect - a) / (a)),
+                sigmoid((baseline_effect + treatment_effect - a) / (0.5 * a)),
                 0.01,
                 0.99,
             )
@@ -263,14 +263,14 @@ class DatasetGenerator:
                 self.conversion_effect(control_features)
             )
             prob_purchase_treatment = sigmoid(
-                (baseline_effect_treatment + interaction_effect_treatment - a) / (a)
+                (baseline_effect_treatment + interaction_effect_treatment - a) / (0.5 * a)
             )
-            prob_purchase_control = sigmoid((baseline_effect_control - a) / (a))
+            prob_purchase_control = sigmoid((baseline_effect_control - a) / (0.5 * a))
             prob_purchase_treatment_if_non_treatment = sigmoid(
-                (baseline_effect_treatment - a) / (a)
+                (baseline_effect_treatment - a) / (0.5 * a)
             )
             prob_purchace_control_if_treatment = sigmoid(
-                (baseline_effect_control + interaction_effect_control - a) / (a)
+                (baseline_effect_control + interaction_effect_control - a) / (0.5 * a)
             )
             purchase = np.where(visit == 1, np.random.binomial(1, prob_purchase), 0)
             plt.clf()
@@ -298,9 +298,9 @@ class DatasetGenerator:
 
         # pdb.set_trace()
         true_mu_r_1 = np.clip(
-            sigmoid((baseline_effect + interaction_effect - a) / (a)), 0.01, 0.99
+            sigmoid((baseline_effect + interaction_effect - a) / (0.5 * a)), 0.01, 0.99
         )
-        true_mu_r_0 = np.clip(sigmoid((baseline_effect - a) / (a)), 0.01, 0.99)
+        true_mu_r_0 = np.clip(sigmoid((baseline_effect - a) / (0.5 * a)), 0.01, 0.99)
         true_tau_r = true_mu_r_1 - true_mu_r_0
         if self.train_flg:
             return {

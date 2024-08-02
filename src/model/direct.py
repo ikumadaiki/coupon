@@ -74,12 +74,8 @@ class DirectCollator:
     def __call__(self, batch: list[Any]) -> Dict[str, torch.Tensor | int]:
         # バッチを作成
         X_treated = torch.tensor([x[0] for x in batch], dtype=torch.float32)  # (B, D)
-        y_r_treated = torch.tensor(
-            [x[1] for x in batch], dtype=torch.float32
-        ).unsqueeze(-1)
-        y_c_treated = torch.tensor(
-            [x[2] for x in batch], dtype=torch.float32
-        ).unsqueeze(-1)
+        y_r_treated = torch.tensor([x[1] for x in batch], dtype=torch.float32).squeeze()  # (B, 1)
+        y_c_treated = torch.tensor([x[2] for x in batch], dtype=torch.float32).squeeze()  # (B, 1)
         X_control = torch.tensor(
             [x[3] for x in batch], dtype=torch.float32
         )  # (B, 2, D)
@@ -88,8 +84,8 @@ class DirectCollator:
 
         _, D = X_treated.shape
         X_control = X_control.reshape(-1, D)  # (2B, D)
-        y_r_control = y_r_control.reshape(-1, 1)  # (2B, 1)
-        y_c_control = y_c_control.reshape(-1, 1)  # (2B, 1)
+        y_r_control = y_r_control.reshape(-1, 1).squeeze()  # (2B, 1)
+        y_c_control = y_c_control.reshape(-1, 1).squeeze()  # (2B, 1)
 
         X = torch.cat([X_treated, X_control], dim=0)
         treated_size = len(X_treated)
