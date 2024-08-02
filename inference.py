@@ -52,7 +52,7 @@ def inference(
 ) -> None:
     roi_dic = {}
     method_list = ["DR", "Direct", "Direct_only_RCT"]
-    method_list = ["DR"]
+    method_list = ["DR", "Direct"]
     for method in method_list:
         path = f"model_{method}.pth"
         # モデルの読み込み
@@ -81,5 +81,17 @@ def inference(
         incremental_costs, incremental_values = calculate_values(
             roi_dic[roi], test_dataset["true_tau_r"], test_dataset["true_tau_c"]
         )
-        cost_curve(rct_ratio, incremental_costs, incremental_values, label=roi, alpha=False)
-    cost_curve(rct_ratio, incremental_costs_alpha, incremental_values_alpha, label="DR_alpha", alpha=True)
+        incremental_costs_alpha, incremental_values_alpha = optimize_alpha(
+            rct_ratio,
+            roi_dic[roi],
+            test_dataset["true_tau_r"],
+            test_dataset["true_tau_c"],
+        )
+        # cost_curve(rct_ratio, incremental_costs, incremental_values, label=roi, alpha=False)
+        cost_curve(
+            rct_ratio,
+            incremental_costs_alpha,
+            incremental_values_alpha,
+            label=roi,
+            alpha=True,
+        )
