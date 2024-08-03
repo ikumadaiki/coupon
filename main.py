@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 
 from inference import inference, load_test_data
@@ -11,20 +12,21 @@ torch.manual_seed(42)
 
 def main(predict_ps: bool, validate: bool) -> None:
     seed = 42
-    n_samples = 100_000
+    n_samples = 1_000
     test_samples = 100_000
     n_features = 4
     delta = 0.0
     ps_delta = 0.0  # 4パターン
     rct_ratio = 0.025  # 8パターン # Direct:rct_ratioは大きい方がいい
-    batch_size = 1024
-    weight_decay = 1e-3
+    weight_decay = 1e-2
     model_name = "Direct"
     model_params = {"input_dim": n_features}
     method = "Direct"
     only_rct = True if method == "Direct_only_RCT" else False
-    num_epochs_list = [50, 50]
-    lr_list = [0.001, 0.00001]
+    num_epochs_list = [500, 50]
+    lr_list = [1e-5, 1e-4, 1e-3, 1e-2]
+    batch_size_list = [256]
+    batch_size = 256
     dataset = DatasetGenerator(
         n_samples,
         n_features,
@@ -37,6 +39,8 @@ def main(predict_ps: bool, validate: bool) -> None:
         seed=seed,
     )
     dataset = dataset.generate_dataset()
+    nan_mask = np.isnan(dataset["true_ROI"])
+    dataset["true_ROI"][nan_mask] = 0.0
     train_dataset, val_dataset = split_dataset(dataset)
     model = get_model(model_name=model_name, model_params=model_params)
     test_dataset, test_dl = load_test_data(
@@ -46,7 +50,6 @@ def main(predict_ps: bool, validate: bool) -> None:
         ps_delta=ps_delta,
         seed=seed,
         model_name=model_name,
-        batch_size=batch_size,
         method=None,
     )
     if not validate:
@@ -54,7 +57,7 @@ def main(predict_ps: bool, validate: bool) -> None:
             train_dl = make_loader(
                 train_dataset,
                 model_name=model_name,
-                batch_size=batch_size,
+                batch_size=8,
                 train_flg=True,
                 method="Direct",
                 seed=seed,
@@ -62,7 +65,7 @@ def main(predict_ps: bool, validate: bool) -> None:
             val_dl = make_loader(
                 val_dataset,
                 model_name=model_name,
-                batch_size=batch_size,
+                batch_size=8,
                 train_flg=True,
                 method="Direct",
                 seed=seed,
@@ -86,12 +89,17 @@ def main(predict_ps: bool, validate: bool) -> None:
             )
     trainer = Trainer(
         num_epochs=num_epochs_list[int(only_rct)],
-        lr=lr_list[int(only_rct)],
         weight_decay=weight_decay,
+        patience=10,
     )
     if not validate:
-        model = trainer.train(
-            train_dl=train_dl, val_dl=val_dl, model=model, method=method
+        model, _, _, _ = trainer.grid_search(
+            train_dl=train_dl,
+            val_dl=val_dl,
+            model=model,
+            lr_list=lr_list,
+            batch_size_list=batch_size_list,
+            method=method,
         )
         trainer.save_model(model, f"model_{method}.pth")
 

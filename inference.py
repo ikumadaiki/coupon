@@ -16,7 +16,6 @@ def load_test_data(
     ps_delta: float,
     seed: int,
     model_name: str,
-    batch_size: int,
     method: str,
 ) -> tuple:
     test_dataset = DatasetGenerator(
@@ -34,7 +33,7 @@ def load_test_data(
     test_dl = make_loader(
         test_dataset,
         model_name=model_name,
-        batch_size=batch_size,
+        batch_size=128,
         train_flg=False,
         method=method,
         seed=seed,
@@ -52,18 +51,15 @@ def inference(
 ) -> None:
     roi_dic = {}
     method_list = ["DR", "Direct", "Direct_only_RCT"]
-    method_list = ["DR", "Direct"]
+
     for method in method_list:
         path = f"model_{method}.pth"
         # モデルの読み込み
         model = get_model(model_name="Direct", model_params={"input_dim": n_features})
         model.load_state_dict(torch.load(path))
-        trainer = Trainer(num_epochs=10, lr=0.1)
+        trainer = Trainer(num_epochs=10)
         predictions = trainer.predict(dl=test_dl, model=model).squeeze()
         roi_dic[method] = predictions
-        incremental_costs, incremental_values = calculate_values(
-            predictions, test_dataset["true_tau_r"], test_dataset["true_tau_c"]
-        )
         incremental_costs_alpha, incremental_values_alpha = optimize_alpha(
             rct_ratio,
             predictions,

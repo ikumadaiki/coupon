@@ -1,6 +1,5 @@
-from typing import Any, List
+from typing import Any, List, Tuple
 
-import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn as nn
@@ -9,31 +8,36 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import AdamW, get_cosine_schedule_with_warmup
 
+from src.early_stopping import EarlyStopping
+
 # NNのランダム性を固定
 torch.manual_seed(42)
 
 
 class Trainer:
-    def __init__(self, num_epochs: int, lr: float, weight_decay: float = 0.0) -> None:
+    def __init__(
+        self, num_epochs: int, weight_decay: float = 0.0, patience: int = 10
+    ) -> None:
         self.num_epochs = num_epochs
-        self.lr = lr
         self.weight_decay = weight_decay
+        self.patience = patience
 
     def train(
         self,
         train_dl: DataLoader,  # type: ignore
         val_dl: DataLoader,  # type: ignore
-        model: nn.Module,  # type: ignore
+        model: nn.Module,
+        lr: float,
         method: str,
-    ) -> nn.Module:  # type: ignore
-        optimizer = AdamW(
-            model.parameters(), lr=self.lr, weight_decay=self.weight_decay
-        )
+    ) -> Tuple[nn.Module, float]:
+        optimizer = AdamW(model.parameters(), lr=lr, weight_decay=self.weight_decay)
+
         scheduler = get_cosine_schedule_with_warmup(
             optimizer,
             num_warmup_steps=0,
             num_training_steps=self.num_epochs * len(train_dl),
         )
+        early_stopping = EarlyStopping(patience=self.patience, verbose=True)
         train_loss_history: List[float] = []
         val_loss_history: List[float] = []
         loss = np.inf
@@ -56,6 +60,7 @@ class Trainer:
                 scheduler.step()
                 average_loss = total_train_loss / count_batch
             train_loss_history.append(total_train_loss / count_batch)
+
             # モデルのパラメータをprint
             # if epoch % 10 == 0:
             #     print(f"Parameters after epoch {epoch}:")
@@ -73,16 +78,42 @@ class Trainer:
                     val_loss = val_output["loss"].item()
                     total_val_loss += val_loss
                     count_val_batch += 1
-                val_loss_history.append(total_val_loss / count_val_batch)
+            val_loss_history.append(total_val_loss / count_val_batch)
 
-        plt.clf()
-        plt.plot(train_loss_history, label="Train")
-        plt.plot(val_loss_history, label="Validation")
-        plt.xlabel("Epoch")
-        plt.ylabel("Loss")
-        plt.legend()
-        plt.savefig(f"train_val_loss_{method}.png")
-        return model
+            # EarlyStoppingの呼び出し
+            early_stopping(total_val_loss / count_val_batch, model)
+            if early_stopping.early_stop:
+                print("Early stopping")
+                break
+
+        return model, total_val_loss / count_val_batch
+
+    def grid_search(
+        self,
+        train_dl: DataLoader,
+        val_dl: DataLoader,
+        model: nn.Module,
+        lr_list: List[float],
+        batch_size_list: List[int],
+        method: str,
+    ) -> Tuple[nn.Module, float, float, int]:
+        best_model = None
+        best_val_loss = np.inf
+        best_lr = None
+        best_batch_size = None
+
+        for lr in lr_list:
+            for batch_size in batch_size_list:
+                print(f"lr: {lr}, batch_size: {batch_size}")
+                model, val_loss = self.train(
+                    train_dl=train_dl, val_dl=val_dl, model=model, lr=lr, method=method
+                )
+                if val_loss < best_val_loss:
+                    best_model = model
+                    best_val_loss = val_loss
+                    best_lr = lr
+                    best_batch_size = batch_size
+        return best_model, best_val_loss, best_lr, best_batch_size
 
     def predict(self, dl: DataLoader, model: nn.Module) -> NDArray[Any]:  # type: ignore
         model.eval()

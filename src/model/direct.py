@@ -74,8 +74,12 @@ class DirectCollator:
     def __call__(self, batch: list[Any]) -> Dict[str, torch.Tensor | int]:
         # バッチを作成
         X_treated = torch.tensor([x[0] for x in batch], dtype=torch.float32)  # (B, D)
-        y_r_treated = torch.tensor([x[1] for x in batch], dtype=torch.float32).squeeze()  # (B, 1)
-        y_c_treated = torch.tensor([x[2] for x in batch], dtype=torch.float32).squeeze()  # (B, 1)
+        y_r_treated = torch.tensor(
+            [x[1] for x in batch], dtype=torch.float32
+        ).squeeze()  # (B, 1)
+        y_c_treated = torch.tensor(
+            [x[2] for x in batch], dtype=torch.float32
+        ).squeeze()  # (B, 1)
         X_control = torch.tensor(
             [x[3] for x in batch], dtype=torch.float32
         )  # (B, 2, D)
@@ -141,16 +145,16 @@ class DirectNonLinear(nn.Module):
     ) -> Dict[str, torch.Tensor]:
         pred = self._predict(X)
         if treated_size is not None and y_r is not None and y_c is not None:
-            q_treated = pred[:treated_size]
+            q_treated = pred[:treated_size].squeeze()
             y_r_treated = y_r[:treated_size]
             y_c_treated = y_c[:treated_size]
-            q_control = pred[treated_size:]
+            q_control = pred[treated_size:].squeeze()
             y_r_control = y_r[treated_size:]
             y_c_control = y_c[treated_size:]
 
-            loss_1 = custom_loss(y_r_treated, y_c_treated, q_treated, q_treated.size(0))
+            loss_1 = custom_loss(y_r_treated, y_c_treated, q_treated)
 
-            loss_0 = custom_loss(y_r_control, y_c_control, q_control, q_control.size(0))
+            loss_0 = custom_loss(y_r_control, y_c_control, q_control)
 
             loss = loss_1 - loss_0
 
@@ -163,11 +167,9 @@ class DirectNonLinear(nn.Module):
 
 
 # 損失関数の定義
-def custom_loss(
-    y_r: torch.Tensor, y_c: torch.Tensor, q: torch.Tensor, group_size: int
-) -> torch.Tensor:
-    q = torch.clamp(q, 1e-2, 1 - 1e-2)  # (N, 1)
-    logit_q = torch.log(q / (1 - q))  # (N, 1)
+def custom_loss(y_r: torch.Tensor, y_c: torch.Tensor, q: torch.Tensor) -> torch.Tensor:
+    q = torch.clamp(q, 1e-2, 1 - 1e-2)
+    logit_q = torch.log(q / (1 - q))
 
-    loss = -torch.sum(y_r * logit_q + y_c * torch.log(1 - q)) / group_size
+    loss = -torch.mean(y_r * logit_q + y_c * torch.log(1 - q))
     return loss

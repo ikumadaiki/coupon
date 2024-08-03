@@ -6,42 +6,6 @@ from numpy.typing import NDArray
 from scipy.integrate import quad
 from scipy.interpolate import interp1d
 
-# def calculate_values(
-#     roi_scores: NDArray[Any],
-#     T_test: NDArray[Any],
-#     y_r_test: NDArray[Any],
-#     y_c_test: NDArray[Any],
-# ) -> Tuple[Any, Any]:
-#     sorted_indices = np.argsort(roi_scores)[::-1]
-#     p_values = np.linspace(0, 1, 50)
-#     incremental_costs = []
-#     incremental_values = []
-
-#     for p in p_values:
-#         top_p_indices = sorted_indices[: int(p * len(roi_scores))]
-#         treatment_indices = T_test[top_p_indices] == 1
-
-#         # ATE (Average Treatment Effect) の計算
-#         ATE_Yr = np.mean(y_r_test[top_p_indices][treatment_indices]) - np.mean(
-#             y_r_test[top_p_indices][~treatment_indices]
-#         )
-#         ATE_Yc = np.mean(y_c_test[top_p_indices][treatment_indices]) - np.mean(
-#             y_c_test[top_p_indices][~treatment_indices]
-#         )
-
-#         incremental_costs.append(ATE_Yc * np.sum(treatment_indices))
-#         incremental_values.append(ATE_Yr * np.sum(treatment_indices))
-#         # print(ATE_Yr , ATE_Yc,np.sum(treatment_indices))
-#     # nanがあれば0に変換
-#     incremental_costs = np.array(incremental_costs)
-#     incremental_values = np.array(incremental_values)
-#     incremental_costs[np.isnan(incremental_costs)] = 0
-#     incremental_values[np.isnan(incremental_values)] = 0
-#     incremental_costs[0] = 0
-#     incremental_values[0] = 0
-
-#     return incremental_costs, incremental_values
-
 
 def calculate_values(
     roi_scores: NDArray[Any],
@@ -118,8 +82,8 @@ def optimize_alpha(
     true_tau_c: NDArray[Any],
 ) -> Tuple[Any, Any]:
     random_treatment_indices = int(len(roi_scores) * rct_ratio)
-    model_based_treatment = roi_scores[random_treatment_indices:]
-    sorted_indices = np.argsort(model_based_treatment)[::-1] + random_treatment_indices
+    model_based_treatment = roi_scores[: (len(roi_scores) - random_treatment_indices)]
+    sorted_indices = np.argsort(model_based_treatment)[::-1]
     p_values = np.linspace(0, 1, 50)
     incremental_costs = []
     incremental_values = []
