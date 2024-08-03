@@ -28,20 +28,21 @@ class TrainDirectDataset(Dataset):  # type: ignore
         self.y_r_control = y_r[T == 0]
         self.y_c_control = y_c[T == 0]
         # teratment_idxからcontrol_idxをランダム二つ選択する辞書を作成
-        self.treatment_idx_to_control_idx = {}
+        self.control_idx_to_treatment_idx = {}
         # unused_control_idx = set(list(range(len(self.X_control))))
         self.ratio = math.ceil(len(self.X_control) / len(self.X_treated))
+        self.ratio = 1
         # import pdb
 
         # pdb.set_trace()
-        ununsed_control_idx = list(range(len(self.X_control)))
-        for i in range(len(self.X_treated)):
-            control_idx_i = np.random.choice(
-                ununsed_control_idx,
+        ununsed_treated_idx = list(range(len(self.X_treated)))
+        for i in range(len(self.X_control)):
+            treated_idx = np.random.choice(
+                ununsed_treated_idx,
                 self.ratio,
                 replace=False,
             )
-            self.treatment_idx_to_control_idx[i] = control_idx_i
+            self.control_idx_to_treatment_idx[i] = treated_idx
             # unused_control_idx -= set(control_idx_i)
 
     def __len__(self) -> int:
@@ -57,15 +58,15 @@ class TrainDirectDataset(Dataset):  # type: ignore
         NDArray[Any],
         NDArray[Any],
     ]:
-        # treatmentのデータを取得
-        X_treated = self.X_treated[idx]
-        y_r_treated = self.y_r_treated[idx]
-        y_c_treated = self.y_c_treated[idx]
-        # controlのデータを取得
-        control_idx = self.treatment_idx_to_control_idx[idx]
-        X_control = self.X_control[control_idx]
-        y_r_control = self.y_r_control[control_idx]
-        y_c_control = self.y_c_control[control_idx]
+        if idx > len(self.X_control) - 1:
+            idx = idx % len(self.X_control)
+        X_control = self.X_control[idx]
+        y_r_control = self.y_r_control[idx]
+        y_c_control = self.y_c_control[idx]
+        treated_idx = self.control_idx_to_treatment_idx[idx]
+        X_treated = self.X_treated[treated_idx]
+        y_r_treated = self.y_r_treated[treated_idx]
+        y_c_treated = self.y_c_treated[treated_idx]
 
         return X_treated, y_r_treated, y_c_treated, X_control, y_r_control, y_c_control
 
@@ -85,12 +86,10 @@ class DirectCollator:
         )  # (B, 2, D)
         y_r_control = torch.tensor([x[4] for x in batch], dtype=torch.float32)  # (B, 2)
         y_c_control = torch.tensor([x[5] for x in batch], dtype=torch.float32)  # (B, 2)
-
-        _, D = X_treated.shape
-        X_control = X_control.reshape(-1, D)  # (2B, D)
-        y_r_control = y_r_control.reshape(-1, 1).squeeze()  # (2B, 1)
-        y_c_control = y_c_control.reshape(-1, 1).squeeze()  # (2B, 1)
-
+        _, D = X_control.shape
+        X_treated = X_treated.reshape(-1, D)  # (2B, D)
+        y_r_treated = y_r_treated.reshape(-1, 1).squeeze()  # (2B, 1)
+        y_c_treated = y_c_treated.reshape(-1, 1).squeeze()  # (2B, 1)
         X = torch.cat([X_treated, X_control], dim=0)
         treated_size = len(X_treated)
         y_r = torch.cat([y_r_treated, y_r_control], dim=0)

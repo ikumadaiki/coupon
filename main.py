@@ -29,7 +29,7 @@ def main(predict_ps: bool, validate: bool) -> None:
     num_epochs_list = [500, 50]
     weight_decay_list = [1e-3]
     lr_list = [1e-4, 1e-3]
-    batch_size_list = [256, 512, 1024]
+    batch_size_list = [512, 1024, 2048]
     dataset = DatasetGenerator(
         n_samples,
         n_features,
