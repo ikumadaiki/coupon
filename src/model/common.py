@@ -66,7 +66,7 @@ def make_loader(
                     y_c=dataset["y_c_ipw"],
                     seed=seed,
                 )
-            elif method == "Direct":
+            elif method == "Direct" or method == "Direct_only_RCT":
                 ds = TrainDirectDataset(
                     X=dataset["features"],
                     T=dataset["T"],

@@ -3,7 +3,7 @@ import torch
 
 from inference import inference, load_test_data
 from src.make_data import DatasetGenerator, split_dataset
-from src.model.common import get_model, make_loader
+from src.model.common import get_model
 from src.trainer import Trainer
 
 # NNのランダム性を固定
@@ -12,21 +12,24 @@ torch.manual_seed(42)
 
 def main(predict_ps: bool, validate: bool) -> None:
     seed = 42
-    n_samples = 1_000
+    n_samples = 10_000
     test_samples = 100_000
     n_features = 4
     delta = 0.0
     ps_delta = 0.0  # 4パターン
-    rct_ratio = 0.025  # 8パターン # Direct:rct_ratioは大きい方がいい
-    weight_decay = 1e-2
+    rct_ratio = 0.05  # 8パターン # Direct:rct_ratioは大きい方がいい
     model_name = "Direct"
-    model_params = {"input_dim": n_features}
-    method = "Direct"
+    model_params = (
+        {"input_dim": n_features}
+        if model_name == "Direct"
+        else {"input_dim": n_features + 1}
+    )
+    method = "Direct_only_RCT"
     only_rct = True if method == "Direct_only_RCT" else False
     num_epochs_list = [500, 50]
-    lr_list = [1e-5, 1e-4, 1e-3, 1e-2]
-    batch_size_list = [256]
-    batch_size = 256
+    weight_decay_list = [1e-3]
+    lr_list = [1e-4, 1e-3]
+    batch_size_list = [256, 512, 1024]
     dataset = DatasetGenerator(
         n_samples,
         n_features,
@@ -52,54 +55,23 @@ def main(predict_ps: bool, validate: bool) -> None:
         model_name=model_name,
         method=None,
     )
-    if not validate:
-        if only_rct:
-            train_dl = make_loader(
-                train_dataset,
-                model_name=model_name,
-                batch_size=8,
-                train_flg=True,
-                method="Direct",
-                seed=seed,
-            )
-            val_dl = make_loader(
-                val_dataset,
-                model_name=model_name,
-                batch_size=8,
-                train_flg=True,
-                method="Direct",
-                seed=seed,
-            )
-        else:
-            train_dl = make_loader(
-                train_dataset,
-                model_name=model_name,
-                batch_size=batch_size,
-                train_flg=True,
-                method=method,
-                seed=seed,
-            )
-            val_dl = make_loader(
-                val_dataset,
-                model_name=model_name,
-                batch_size=batch_size,
-                train_flg=True,
-                method=method,
-                seed=seed,
-            )
     trainer = Trainer(
         num_epochs=num_epochs_list[int(only_rct)],
-        weight_decay=weight_decay,
         patience=10,
     )
     if not validate:
-        model, _, _, _ = trainer.grid_search(
-            train_dl=train_dl,
-            val_dl=val_dl,
+        model, val_loss, best_lr, best_batch_size, weight_decay = trainer.grid_search(
+            train_dataset=train_dataset,
+            val_dataset=val_dataset,
             model=model,
             lr_list=lr_list,
+            weight_decay_list=weight_decay_list,
             batch_size_list=batch_size_list,
+            model_name=model_name,
             method=method,
+        )
+        print(
+            f"best_lr: {best_lr}, best_batch_size: {best_batch_size}, weight_decay: {weight_decay}"
         )
         trainer.save_model(model, f"model_{method}.pth")
 

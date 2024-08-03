@@ -107,7 +107,7 @@ class DatasetGenerator:
         self, features: NDArray[Any], rct_flag: NDArray[Any]
     ) -> Dict[str, NDArray[Any]]:
         np.random.seed(self.seed)
-        T_prob = sigmoid(features[:, 0])
+        T_prob = sigmoid((features[:, 0] - 1.0) / 0.8)
         T_prob = T_prob.clip(0.01, 0.99)
         T_prob[rct_flag == 1] = 0.5
         T: NDArray[Any] = np.random.binomial(1, T_prob).astype(bool)
@@ -149,17 +149,17 @@ class DatasetGenerator:
     def conversion_effect(
         self, features: NDArray[Any]
     ) -> Tuple[NDArray[Any], NDArray[Any]]:
-        baseline_effect = 0.5 * features[:, 0] + features[:, 1] - 4
-        interaction_effect_ = features[:, 2]
+        baseline_effect = 0.5 * features[:, 0] + features[:, 1] - 3
+        interaction_effect_ = 0.5 * features[:, 2]
         interaction_effect = np.exp(interaction_effect_)
         return baseline_effect, interaction_effect
 
     def visit_effect(self, features: NDArray[Any]) -> Tuple[NDArray[Any], NDArray[Any]]:
-        baseline_effect = 0.5 * features[:, 0] + features[:, 1] - 6
+        baseline_effect = 0.5 * features[:, 0] + features[:, 1] - 4
         interaction_effect_ = (
-            0.05 * features[:, 0] + 0.1 * features[:, 1] + 0.3 * features[:, 2]
+            0.2 * features[:, 0] + 0.3 * features[:, 1] + 0.6 * features[:, 2]
         )
-        interaction_effect = np.exp(interaction_effect_)
+        interaction_effect = 0.1 * np.exp(interaction_effect_)
 
         return baseline_effect, interaction_effect
 
@@ -329,26 +329,26 @@ class DatasetGenerator:
         control_purchase = y_r[control_mask]
         treatment_visit = y_c[treatment_mask]
         control_visit = y_c[control_mask]
-        mu_r_0 = LGBMClassifier(verbose=-1, random_state=42).fit(
-            control_features, control_purchase
-        )
-        mu_r_1 = LGBMClassifier(verbose=-1, random_state=42).fit(
-            treatment_features, treatment_purchase
-        )
-        mu_c_0 = LGBMClassifier(verbose=-1, random_state=42).fit(
-            control_features, control_visit
-        )
-        mu_c_1 = LGBMClassifier(verbose=-1, random_state=42).fit(
-            treatment_features, treatment_visit
-        )
-        mu_r_1_pred = mu_r_1.predict_proba(features)[:, 1]
-        mu_r_0_pred = mu_r_0.predict_proba(features)[:, 1]
-        mu_c_1_pred = mu_c_1.predict_proba(features)[:, 1]
-        mu_c_0_pred = mu_c_0.predict_proba(features)[:, 1]
-        rmse_mu_r_1 = np.sqrt(np.mean((true_mu_r_1 - mu_r_1_pred) ** 2))
-        rmse_mu_r_0 = np.sqrt(np.mean((true_mu_r_0 - mu_r_0_pred) ** 2))
-        rmse_mu_c_1 = np.sqrt(np.mean((true_mu_c_1 - mu_c_1_pred) ** 2))
-        rmse_mu_c_0 = np.sqrt(np.mean((true_mu_c_0 - mu_c_0_pred) ** 2))
+        # mu_r_0 = LGBMClassifier(verbose=-1, random_state=42).fit(
+        #     control_features, control_purchase
+        # )
+        # mu_r_1 = LGBMClassifier(verbose=-1, random_state=42).fit(
+        #     treatment_features, treatment_purchase
+        # )
+        # mu_c_0 = LGBMClassifier(verbose=-1, random_state=42).fit(
+        #     control_features, control_visit
+        # )
+        # mu_c_1 = LGBMClassifier(verbose=-1, random_state=42).fit(
+        #     treatment_features, treatment_visit
+        # )
+        # mu_r_1_pred = mu_r_1.predict_proba(features)[:, 1]
+        # mu_r_0_pred = mu_r_0.predict_proba(features)[:, 1]
+        # mu_c_1_pred = mu_c_1.predict_proba(features)[:, 1]
+        # mu_c_0_pred = mu_c_0.predict_proba(features)[:, 1]
+        # rmse_mu_r_1 = np.sqrt(np.mean((true_mu_r_1 - mu_r_1_pred) ** 2))
+        # rmse_mu_r_0 = np.sqrt(np.mean((true_mu_r_0 - mu_r_0_pred) ** 2))
+        # rmse_mu_c_1 = np.sqrt(np.mean((true_mu_c_1 - mu_c_1_pred) ** 2))
+        # rmse_mu_c_0 = np.sqrt(np.mean((true_mu_c_0 - mu_c_0_pred) ** 2))
         doubly_robust = {}
         # doubly_robust["y_r_dr"] = np.where(
         #     T == 1,

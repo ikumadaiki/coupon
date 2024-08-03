@@ -1,5 +1,6 @@
 from typing import Any, List, Tuple
 
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn as nn
@@ -9,17 +10,15 @@ from tqdm import tqdm
 from transformers import AdamW, get_cosine_schedule_with_warmup
 
 from src.early_stopping import EarlyStopping
+from src.model.common import make_loader
 
 # NNのランダム性を固定
 torch.manual_seed(42)
 
 
 class Trainer:
-    def __init__(
-        self, num_epochs: int, weight_decay: float = 0.0, patience: int = 10
-    ) -> None:
+    def __init__(self, num_epochs: int, patience: int = 10) -> None:
         self.num_epochs = num_epochs
-        self.weight_decay = weight_decay
         self.patience = patience
 
     def train(
@@ -28,9 +27,10 @@ class Trainer:
         val_dl: DataLoader,  # type: ignore
         model: nn.Module,
         lr: float,
+        weight_decay: float,
         method: str,
-    ) -> Tuple[nn.Module, float]:
-        optimizer = AdamW(model.parameters(), lr=lr, weight_decay=self.weight_decay)
+    ) -> Tuple[nn.Module, float, List[float], List[float]]:
+        optimizer = AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
 
         scheduler = get_cosine_schedule_with_warmup(
             optimizer,
@@ -86,17 +86,24 @@ class Trainer:
                 print("Early stopping")
                 break
 
-        return model, total_val_loss / count_val_batch
+        return (
+            model,
+            total_val_loss / count_val_batch,
+            train_loss_history,
+            val_loss_history,
+        )
 
     def grid_search(
         self,
-        train_dl: DataLoader,
-        val_dl: DataLoader,
+        train_dataset: dict[str, NDArray[Any]],
+        val_dataset: dict[str, NDArray[Any]],
         model: nn.Module,
         lr_list: List[float],
         batch_size_list: List[int],
+        weight_decay_list: List[float],
         method: str,
-    ) -> Tuple[nn.Module, float, float, int]:
+        model_name: str,
+    ) -> Tuple[nn.Module, float, float, int, float]:
         best_model = None
         best_val_loss = np.inf
         best_lr = None
@@ -104,16 +111,59 @@ class Trainer:
 
         for lr in lr_list:
             for batch_size in batch_size_list:
-                print(f"lr: {lr}, batch_size: {batch_size}")
-                model, val_loss = self.train(
-                    train_dl=train_dl, val_dl=val_dl, model=model, lr=lr, method=method
-                )
-                if val_loss < best_val_loss:
-                    best_model = model
-                    best_val_loss = val_loss
-                    best_lr = lr
-                    best_batch_size = batch_size
-        return best_model, best_val_loss, best_lr, best_batch_size
+                for weight_decay in weight_decay_list:
+                    train_dl = make_loader(
+                        dataset=train_dataset,
+                        model_name=model_name,
+                        batch_size=batch_size,
+                        train_flg=True,
+                        method=method,
+                    )
+                    val_dl = make_loader(
+                        dataset=val_dataset,
+                        model_name=model_name,
+                        batch_size=batch_size,
+                        train_flg=True,
+                        method=method,
+                    )
+                    model, val_loss, train_loss_history, val_loss_history = self.train(
+                        train_dl=train_dl,
+                        val_dl=val_dl,
+                        model=model,
+                        lr=lr,
+                        weight_decay=weight_decay,
+                        method=method,
+                    )
+                    if val_loss < best_val_loss:
+                        best_model = model
+                        best_val_loss = val_loss
+                        best_lr = lr
+                        best_batch_size = batch_size
+                        best_train_loss_history, best_val_loss_history = (
+                            train_loss_history,
+                            val_loss_history,
+                        )
+        self.plot_loss(best_train_loss_history, best_val_loss_history, method)
+
+        return (
+            best_model,
+            best_val_loss,
+            best_lr,
+            best_batch_size,
+            weight_decay,
+        )  # type: ignore
+
+    def plot_loss(
+        self, train_loss: List[float], val_loss: List[float], method: str
+    ) -> None:
+        plt.clf()
+        plt.plot(train_loss, label="Training Loss")
+        plt.plot(val_loss, label="Validation Loss")
+        plt.xlabel("Epochs")
+        plt.ylabel("Loss")
+        plt.legend()
+        plt.grid(True)
+        plt.savefig(f"loss_{method}.png")
 
     def predict(self, dl: DataLoader, model: nn.Module) -> NDArray[Any]:  # type: ignore
         model.eval()
