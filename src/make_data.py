@@ -2,7 +2,8 @@ from typing import Any, Dict, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
-from lightgbm import LGBMClassifier
+
+# from lightgbm import LGBMClassifier
 from numpy.typing import NDArray
 from sklearn.model_selection import train_test_split
 
@@ -360,15 +361,20 @@ class DatasetGenerator:
         #     (y_c - true_mu_c_1) / T_prob + true_mu_c_1,
         #     (y_c - true_mu_c_0) / (1 - T_prob) + true_mu_c_0,
         # )
+        std = self.delta * np.sqrt(np.pi / 2)
+        mu_r_1_pred = true_mu_r_1 + np.random.normal(0, std, size=len(features))
+        mu_r_0_pred = true_mu_r_0 + np.random.normal(0, std, size=len(features))
+        mu_c_1_pred = true_mu_c_1 + np.random.normal(0, std, size=len(features))
+        mu_c_0_pred = true_mu_c_0 + np.random.normal(0, std, size=len(features))
         doubly_robust["y_r_dr"] = np.where(
             T == 1,
-            (y_r - true_mu_r_1) / T_prob + true_mu_r_1,
-            (y_r - true_mu_r_0) / (1 - T_prob) + true_mu_r_0,
+            (y_r - mu_r_1_pred) / T_prob + mu_r_1_pred,
+            (y_r - mu_r_0_pred) / (1 - T_prob) + mu_r_0_pred,
         )
         doubly_robust["y_c_dr"] = np.where(
             T == 1,
-            (y_c - true_mu_c_1) / T_prob + true_mu_c_1,
-            (y_c - true_mu_c_0) / (1 - T_prob) + true_mu_c_0,
+            (y_c - mu_c_1_pred) / T_prob + mu_c_1_pred,
+            (y_c - mu_c_0_pred) / (1 - T_prob) + mu_c_0_pred,
         )
         # import pdb
 

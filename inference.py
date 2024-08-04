@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import torch
 from torch.utils.data import DataLoader
 
-from src.evaluate.evaluate import calculate_values, cost_curve, optimize_alpha
+from src.evaluate.evaluate import cost_curve, cost_curve_alpha, optimize_alpha
 from src.make_data import DatasetGenerator
 from src.model.common import get_model, make_loader
 from src.model.tpmsl_lgbm import get_roi_tpmsl
@@ -43,7 +43,6 @@ def load_test_data(
 
 def inference(
     n_features: int,
-    ps_delta: float,
     rct_ratio: float,
     train_dataset: dict,
     test_dataset: dict,
@@ -74,9 +73,6 @@ def inference(
     roi_dic["Optimal"] = test_dataset["true_tau_r"] / test_dataset["true_tau_c"]
     plt.clf()
     for roi in roi_dic:
-        incremental_costs, incremental_values = calculate_values(
-            roi_dic[roi], test_dataset["true_tau_r"], test_dataset["true_tau_c"]
-        )
         incremental_costs_alpha, incremental_values_alpha = optimize_alpha(
             rct_ratio,
             roi_dic[roi],
@@ -89,5 +85,45 @@ def inference(
             incremental_costs_alpha,
             incremental_values_alpha,
             label=roi,
-            alpha=True,
+        )
+
+
+def compare_alpha(
+    n_features: int,
+    ps_delta: float,
+    rct_ratio: float,
+    alpha_list: list,
+    test_dataset: dict,
+    test_dl: DataLoader,
+) -> None:
+    roi_dic_alpha = {}
+
+    for alpha in alpha_list:
+        path = f"model_DR_{alpha}.pth"
+        # モデルの読み込み
+        model = get_model(model_name="Direct", model_params={"input_dim": n_features})
+        model.load_state_dict(torch.load(path))
+        trainer = Trainer(num_epochs=10)
+        predictions = trainer.predict(dl=test_dl, model=model).squeeze()
+        roi_dic_alpha[alpha] = predictions
+        incremental_costs_alpha, incremental_values_alpha = optimize_alpha(
+            rct_ratio,
+            predictions,
+            test_dataset["true_tau_r"],
+            test_dataset["true_tau_c"],
+        )
+    plt.clf()
+    for alpha in roi_dic_alpha:
+        incremental_costs_alpha, incremental_values_alpha = optimize_alpha(
+            rct_ratio,
+            roi_dic_alpha[alpha],
+            test_dataset["true_tau_r"],
+            test_dataset["true_tau_c"],
+        )
+        cost_curve_alpha(
+            rct_ratio,
+            incremental_costs_alpha,
+            incremental_values_alpha,
+            label=alpha,
+            ps_delta=ps_delta,
         )

@@ -143,7 +143,13 @@ class Trainer:
                             train_loss_history,
                             val_loss_history,
                         )
-        self.plot_loss(best_train_loss_history, best_val_loss_history, method)
+        self.plot_loss(
+            best_train_loss_history,
+            best_val_loss_history,
+            method,
+            best_batch_size, # type: ignore
+            best_lr, # type: ignore
+        )
 
         return (
             best_model,
@@ -154,13 +160,19 @@ class Trainer:
         )  # type: ignore
 
     def plot_loss(
-        self, train_loss: List[float], val_loss: List[float], method: str
+        self,
+        train_loss: List[float],
+        val_loss: List[float],
+        method: str,
+        best_batch_size: int,
+        best_lr: float,
     ) -> None:
         plt.clf()
         plt.plot(train_loss, label="Training Loss")
         plt.plot(val_loss, label="Validation Loss")
         plt.xlabel("Epochs")
         plt.ylabel("Loss")
+        plt.title(f"Loss: batch_size={best_batch_size}, lr={best_lr}")
         plt.legend()
         plt.grid(True)
         plt.savefig(f"loss_{method}.png")

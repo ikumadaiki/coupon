@@ -43,11 +43,9 @@ def cost_curve(
     incremental_costs: NDArray[Any],
     incremental_values: NDArray[Any],
     label: str,
-    alpha: bool = False,
 ) -> None:
     normalized_costs = incremental_costs / incremental_costs.max()
-    if alpha:
-        incremental_values += rct_ratio * normalized_costs
+    incremental_values += rct_ratio * normalized_costs
     normalized_values = incremental_values / incremental_values.max()
 
     # グラフ描画
@@ -73,6 +71,40 @@ def cost_curve(
     plt.ylabel("Incremental Values")
     plt.legend()
     plt.savefig("cost_curve.png")
+
+
+def cost_curve_alpha(
+    rct_ratio: float,
+    incremental_costs: NDArray[Any],
+    incremental_values: NDArray[Any],
+    label: str,
+    ps_delta: float,
+) -> None:
+    normalized_costs = incremental_costs / incremental_costs.max()
+    incremental_values += rct_ratio * normalized_costs
+    normalized_values = incremental_values / incremental_values.max()
+
+    # 線形補間による関数の定義
+    curve_function = interp1d(
+        normalized_costs, normalized_values, fill_value="extrapolate"
+    )
+
+    # y = x 関数との差を積分（y = x より上の部分のみ）
+    def area_above_y_equals_x(x: float) -> float:
+        difference = curve_function(x) - x
+        return float(difference)
+
+    area, error = quad(area_above_y_equals_x, 0, 1)
+    print(
+        f"The area above y = x is approximately {area:.4f}, with an error of {error:.4e}."
+    )
+
+    plt.plot(normalized_costs, normalized_values, label=f"alpha={label}_({area:.4f})")
+    plt.plot([0, 1], [0, 1], linestyle="--", color="gray")
+    plt.xlabel("Incremental Costs")
+    plt.ylabel("Incremental Values")
+    plt.legend()
+    plt.savefig(f"cost_curve_ps_delta={ps_delta}.png")
 
 
 def optimize_alpha(
