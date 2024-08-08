@@ -108,7 +108,7 @@ class DatasetGenerator:
         self, features: NDArray[Any], rct_flag: NDArray[Any]
     ) -> Dict[str, NDArray[Any]]:
         np.random.seed(self.seed)
-        T_prob = sigmoid((features[:, 0] - 1.0) / 0.8)
+        T_prob = np.where(features[:, 0] > 0, 0.7, 0.3)
         T_prob = T_prob.clip(0.01, 0.99)
         T_prob[rct_flag == 1] = 0.5
         T: NDArray[Any] = np.random.binomial(1, T_prob).astype(bool)
@@ -150,17 +150,15 @@ class DatasetGenerator:
     def conversion_effect(
         self, features: NDArray[Any]
     ) -> Tuple[NDArray[Any], NDArray[Any]]:
-        baseline_effect = 0.5 * features[:, 0] + features[:, 1] - 3
+        baseline_effect = 0.5 * features[:, 0] - 1
         interaction_effect_ = 0.5 * features[:, 2]
-        interaction_effect = np.exp(interaction_effect_)
+        interaction_effect = 0.5 * np.exp(interaction_effect_ / 0.8)
         return baseline_effect, interaction_effect
 
     def visit_effect(self, features: NDArray[Any]) -> Tuple[NDArray[Any], NDArray[Any]]:
-        baseline_effect = 0.5 * features[:, 0] + features[:, 1] - 4
-        interaction_effect_ = (
-            0.2 * features[:, 0] + 0.3 * features[:, 1] + 0.6 * features[:, 2]
-        )
-        interaction_effect = 0.1 * np.exp(interaction_effect_)
+        baseline_effect = 0.5 * features[:, 0] - 1
+        interaction_effect_ = features[:, 1]
+        interaction_effect = 0.1 * np.exp(interaction_effect_ / 0.7)
 
         return baseline_effect, interaction_effect
 
@@ -254,7 +252,7 @@ class DatasetGenerator:
                 0.01,
                 0.99,
             )
-            visit = np.where(y_r == 1, 1, np.random.binomial(1, prob_visit))
+            visit = np.random.binomial(1, prob_visit)
             treatment_features = features[T == 1]
             control_features = features[T == 0]
             baseline_effect_treatment, interaction_effect_treatment = self.visit_effect(
@@ -322,45 +320,7 @@ class DatasetGenerator:
         true_mu_c_1: NDArray[Any],
         true_mu_c_0: NDArray[Any],
     ) -> Dict[str, NDArray[Any]]:
-        treatment_mask = T == 1
-        control_mask = T == 0
-        treatment_features = features[treatment_mask]
-        control_features = features[control_mask]
-        treatment_purchase = y_r[treatment_mask]
-        control_purchase = y_r[control_mask]
-        treatment_visit = y_c[treatment_mask]
-        control_visit = y_c[control_mask]
-        # mu_r_0 = LGBMClassifier(verbose=-1, random_state=42).fit(
-        #     control_features, control_purchase
-        # )
-        # mu_r_1 = LGBMClassifier(verbose=-1, random_state=42).fit(
-        #     treatment_features, treatment_purchase
-        # )
-        # mu_c_0 = LGBMClassifier(verbose=-1, random_state=42).fit(
-        #     control_features, control_visit
-        # )
-        # mu_c_1 = LGBMClassifier(verbose=-1, random_state=42).fit(
-        #     treatment_features, treatment_visit
-        # )
-        # mu_r_1_pred = mu_r_1.predict_proba(features)[:, 1]
-        # mu_r_0_pred = mu_r_0.predict_proba(features)[:, 1]
-        # mu_c_1_pred = mu_c_1.predict_proba(features)[:, 1]
-        # mu_c_0_pred = mu_c_0.predict_proba(features)[:, 1]
-        # rmse_mu_r_1 = np.sqrt(np.mean((true_mu_r_1 - mu_r_1_pred) ** 2))
-        # rmse_mu_r_0 = np.sqrt(np.mean((true_mu_r_0 - mu_r_0_pred) ** 2))
-        # rmse_mu_c_1 = np.sqrt(np.mean((true_mu_c_1 - mu_c_1_pred) ** 2))
-        # rmse_mu_c_0 = np.sqrt(np.mean((true_mu_c_0 - mu_c_0_pred) ** 2))
         doubly_robust = {}
-        # doubly_robust["y_r_dr"] = np.where(
-        #     T == 1,
-        #     (y_r - true_mu_r_1) / T_prob + true_mu_r_1,
-        #     (y_r - true_mu_r_0) / (1 - T_prob) + true_mu_r_0,
-        # )
-        # doubly_robust["y_c_dr"] = np.where(
-        #     T == 1,
-        #     (y_c - true_mu_c_1) / T_prob + true_mu_c_1,
-        #     (y_c - true_mu_c_0) / (1 - T_prob) + true_mu_c_0,
-        # )
         std = self.delta * np.sqrt(np.pi / 2)
         mu_r_1_pred = true_mu_r_1 + np.random.normal(0, std, size=len(features))
         mu_r_0_pred = true_mu_r_0 + np.random.normal(0, std, size=len(features))

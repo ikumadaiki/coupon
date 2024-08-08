@@ -81,7 +81,6 @@ def cost_curve_alpha(
     ps_delta: float,
 ) -> None:
     normalized_costs = incremental_costs / incremental_costs.max()
-    incremental_values += rct_ratio * normalized_costs
     normalized_values = incremental_values / incremental_values.max()
 
     # 線形補間による関数の定義
@@ -121,14 +120,19 @@ def optimize_alpha(
     incremental_values = []
 
     for p in p_values:
-        top_p_indices = sorted_indices[: int(p * len(model_based_treatment))]
+        top_p_indices = np.concatenate(
+            (
+                sorted_indices[: int(p * len(model_based_treatment))],
+                np.arange(int(p * random_treatment_indices)),
+            )
+        )
 
         # ATE (Average Treatment Effect) の計算
         ATE_Yr = np.mean(true_tau_r[top_p_indices])
         ATE_Yc = np.mean(true_tau_c[top_p_indices])
 
         incremental_costs.append(ATE_Yc * len(top_p_indices))
-        incremental_values.append((1 - rct_ratio) * ATE_Yr * len(top_p_indices))
+        incremental_values.append(ATE_Yr * len(top_p_indices))
         # print(ATE_Yr , ATE_Yc,np.sum(treatment_indices))
     # nanがあれば0に変換
     incremental_costs = np.array(incremental_costs)

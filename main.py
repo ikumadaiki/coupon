@@ -15,9 +15,10 @@ def main(predict_ps: bool, validate: bool) -> None:
     n_samples = 10_000
     test_samples = 100_000
     n_features = 4
-    delta = 0.1
-    ps_delta = 0.1  # 4パターン
-    alpha_list = [0.025, 0.05, 0.075, 0.10]
+    delta = 0.0
+    ps_delta = 0.0  # 4パターン
+    alpha_list = []
+    _alpha_list = [0.0, 0.025, 0.05, 0.075, 0.10]
     model_name = "Direct"
     model_params = (
         {"input_dim": n_features}
@@ -26,11 +27,12 @@ def main(predict_ps: bool, validate: bool) -> None:
     )
     method = "DR"
     only_rct = True if method == "Direct_only_RCT" else False
-    num_epochs_list = [500, 50]
+    num_epochs_list = [2000, 50]
     weight_decay_list = [1e-3]
-    lr_list = [1e-4, 1e-3, 1e-2]
-    batch_size_list = [8192]
-    for rct_ratio in alpha_list:
+    lr_list = [1e-3, 5e-3, 1e-2]
+    batch_size_list = [2048]
+    for rct_ratio in _alpha_list:
+        alpha_list.append(rct_ratio)
         dataset = DatasetGenerator(
             n_samples=n_samples,
             n_features=n_features,
@@ -75,8 +77,8 @@ def main(predict_ps: bool, validate: bool) -> None:
                 f"best_lr: {best_lr}, best_batch_size: {best_batch_size}, weight_decay: {weight_decay}"
             )
             trainer.save_model(model, f"model_{method}.pth")
-            if method == "DR":
-                trainer.save_model(model, f"model_{method}_{rct_ratio}.pth")
+            if method == "DR" or method == "IPW":
+                trainer.save_model(model, f"model_{method}_{ps_delta}_{rct_ratio}.pth")
 
         inference(
             n_features=n_features,

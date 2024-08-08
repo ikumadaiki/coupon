@@ -99,7 +99,7 @@ def compare_alpha(
     roi_dic_alpha = {}
 
     for alpha in alpha_list:
-        path = f"model_DR_{alpha}.pth"
+        path = f"model_DR_{ps_delta}_{alpha}.pth"
         # モデルの読み込み
         model = get_model(model_name="Direct", model_params={"input_dim": n_features})
         model.load_state_dict(torch.load(path))
