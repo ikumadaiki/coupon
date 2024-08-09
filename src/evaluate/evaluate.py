@@ -73,6 +73,46 @@ def cost_curve(
     plt.savefig("cost_curve.png")
 
 
+
+def optimize_alpha(
+    rct_ratio: float,
+    roi_scores: NDArray[Any],
+    true_tau_r: NDArray[Any],
+    true_tau_c: NDArray[Any],
+) -> Tuple[Any, Any]:
+    random_treatment_indices = int(len(roi_scores) * rct_ratio)
+    model_based_treatment = roi_scores[: (len(roi_scores) - random_treatment_indices)]
+    sorted_indices = np.argsort(model_based_treatment)[::-1]
+    p_values = np.linspace(0, 1, 50)
+    incremental_costs = []
+    incremental_values = []
+    perm = np.random.permutation(random_treatment_indices)
+
+    for p in p_values:
+        top_p_indices = np.concatenate(
+            (
+                sorted_indices[: int(p * len(model_based_treatment))],
+                perm[: int((1 - p) * random_treatment_indices)],
+            )
+        )
+
+        # ATE (Average Treatment Effect) の計算
+        ATE_Yr = np.mean(true_tau_r[top_p_indices])
+        ATE_Yc = np.mean(true_tau_c[top_p_indices])
+
+        incremental_costs.append(ATE_Yc * len(top_p_indices))
+        incremental_values.append(ATE_Yr * len(top_p_indices))
+        # print(ATE_Yr , ATE_Yc,np.sum(treatment_indices))
+    # nanがあれば0に変換
+    incremental_costs = np.array(incremental_costs)
+    incremental_values = np.array(incremental_values)
+    incremental_costs[np.isnan(incremental_costs)] = 0
+    incremental_values[np.isnan(incremental_values)] = 0
+    incremental_costs[0] = 0
+    incremental_values[0] = 0
+
+    return incremental_costs, incremental_values
+
 def cost_curve_alpha(
     rct_ratio: float,
     incremental_costs: NDArray[Any],
@@ -105,41 +145,3 @@ def cost_curve_alpha(
     plt.legend()
     plt.savefig(f"cost_curve_ps_delta={ps_delta}.png")
 
-
-def optimize_alpha(
-    rct_ratio: float,
-    roi_scores: NDArray[Any],
-    true_tau_r: NDArray[Any],
-    true_tau_c: NDArray[Any],
-) -> Tuple[Any, Any]:
-    random_treatment_indices = int(len(roi_scores) * rct_ratio)
-    model_based_treatment = roi_scores[: (len(roi_scores) - random_treatment_indices)]
-    sorted_indices = np.argsort(model_based_treatment)[::-1]
-    p_values = np.linspace(0, 1, 50)
-    incremental_costs = []
-    incremental_values = []
-
-    for p in p_values:
-        top_p_indices = np.concatenate(
-            (
-                sorted_indices[: int(p * len(model_based_treatment))],
-                np.arange(int(p * random_treatment_indices)),
-            )
-        )
-
-        # ATE (Average Treatment Effect) の計算
-        ATE_Yr = np.mean(true_tau_r[top_p_indices])
-        ATE_Yc = np.mean(true_tau_c[top_p_indices])
-
-        incremental_costs.append(ATE_Yc * len(top_p_indices))
-        incremental_values.append(ATE_Yr * len(top_p_indices))
-        # print(ATE_Yr , ATE_Yc,np.sum(treatment_indices))
-    # nanがあれば0に変換
-    incremental_costs = np.array(incremental_costs)
-    incremental_values = np.array(incremental_values)
-    incremental_costs[np.isnan(incremental_costs)] = 0
-    incremental_values[np.isnan(incremental_values)] = 0
-    incremental_costs[0] = 0
-    incremental_values[0] = 0
-
-    return incremental_costs, incremental_values

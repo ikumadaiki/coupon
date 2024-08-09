@@ -14,11 +14,11 @@ def main(predict_ps: bool, validate: bool) -> None:
     seed = 42
     n_samples = 10_000
     test_samples = 100_000
-    n_features = 4
+    n_features = 3
     delta = 0.0
     ps_delta = 0.0
     alpha_list = []
-    _alpha_list = [0.0, 0.025, 0.05, 0.075, 0.10]
+    _alpha_list = [0.0, 0.025, 0.05, 0.075, 0.1]
     model_name = "Direct"
     model_params = (
         {"input_dim": n_features}
@@ -27,10 +27,10 @@ def main(predict_ps: bool, validate: bool) -> None:
     )
     method = "DR"
     only_rct = True if method == "Direct_only_RCT" else False
-    num_epochs_list = [50, 50]
+    num_epochs_list = [200, 50]
     weight_decay_list = [1e-3]
-    lr_list = [1e-4, 1e-3, 1e-2]
-    batch_size_list = [512, 1024, 2048]
+    lr_list = [1e-4, 1e-3]
+    batch_size_list = [512]
     for rct_ratio in _alpha_list:
         alpha_list.append(rct_ratio)
         dataset = DatasetGenerator(
