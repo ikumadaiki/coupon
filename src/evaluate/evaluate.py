@@ -143,9 +143,3 @@ def optimize_alpha(
     incremental_values[0] = 0
 
     return incremental_costs, incremental_values
-
-
-# # 例として適用するデータ
-# incremental_costs = np.array([0, 0.25, 0.5, 0.75, 1])
-# incremental_values = np.array([0, 0.3, 0.6, 0.8, 1])
-# cost_curve(incremental_costs, incremental_values, "Example Curve")

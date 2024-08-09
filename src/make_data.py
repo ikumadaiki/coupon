@@ -370,7 +370,7 @@ def split_dataset(
     dataset["strata"] = dataset["T"] * 1.1 + dataset["RCT_flag"]
     train_idx, val_idx = train_test_split(
         np.arange(len(dataset["features"])),
-        train_size=0.5,
+        train_size=0.7,
         random_state=0,
         stratify=dataset["strata"],
     )

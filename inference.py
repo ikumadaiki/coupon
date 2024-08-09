@@ -115,13 +115,13 @@ def compare_alpha(
     plt.clf()
     for alpha in roi_dic_alpha:
         incremental_costs_alpha, incremental_values_alpha = optimize_alpha(
-            rct_ratio,
+            alpha,
             roi_dic_alpha[alpha],
             test_dataset["true_tau_r"],
             test_dataset["true_tau_c"],
         )
         cost_curve_alpha(
-            rct_ratio,
+            alpha,
             incremental_costs_alpha,
             incremental_values_alpha,
             label=alpha,

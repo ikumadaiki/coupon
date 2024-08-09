@@ -167,7 +167,7 @@ class DirectNonLinear(nn.Module):
 
 # 損失関数の定義
 def custom_loss(y_r: torch.Tensor, y_c: torch.Tensor, q: torch.Tensor) -> torch.Tensor:
-    q = torch.clamp(q, 1e-6, 1 - 1e-6)
+    q = torch.clamp(q, 1e-4, 1 - 1e-4)
     logit_q = torch.log(q / (1 - q))
 
     loss = -torch.mean(y_r * logit_q + y_c * torch.log(1 - q))
