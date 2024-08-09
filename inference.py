@@ -49,7 +49,10 @@ def inference(
     test_dl: DataLoader,
 ) -> None:
     roi_dic = {}
-    method_list = ["DR", "Direct", "Direct_only_RCT"]
+    method_list = [
+        "DR",
+        # "Direct", "Direct_only_RCT"
+    ]
 
     for method in method_list:
         path = f"model_{method}.pth"
