@@ -73,7 +73,6 @@ def cost_curve(
     plt.savefig("cost_curve.png")
 
 
-
 def optimize_alpha(
     rct_ratio: float,
     roi_scores: NDArray[Any],
@@ -92,7 +91,7 @@ def optimize_alpha(
         top_p_indices = np.concatenate(
             (
                 sorted_indices[: int(p * len(model_based_treatment))],
-                perm[: int((1 - p) * random_treatment_indices)],
+                perm[: int(p * random_treatment_indices)],
             )
         )
 
@@ -112,6 +111,7 @@ def optimize_alpha(
     incremental_values[0] = 0
 
     return incremental_costs, incremental_values
+
 
 def cost_curve_alpha(
     rct_ratio: float,
@@ -144,4 +144,3 @@ def cost_curve_alpha(
     plt.ylabel("Incremental Values")
     plt.legend()
     plt.savefig(f"cost_curve_ps_delta={ps_delta}.png")
-

@@ -30,7 +30,7 @@ def main(predict_ps: bool, validate: bool) -> None:
     num_epochs_list = [200, 50]
     weight_decay_list = [1e-3]
     lr_list = [1e-4, 1e-3]
-    batch_size_list = [512]
+    batch_size_list = [128, 256, 512]
     for rct_ratio in _alpha_list:
         alpha_list.append(rct_ratio)
         dataset = DatasetGenerator(

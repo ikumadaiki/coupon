@@ -137,6 +137,9 @@ class DatasetGenerator:
         T_prob_pred = T_prob + np.random.normal(0, std, size=len(features))
         T_prob_pred[rct_flag == 1] = 0.5
         T_prob_pred = T_prob_pred.clip(0.01, 0.99)
+        plt.clf()
+        plt.hist(T_prob_pred, bins=20, alpha=0.5, label="T_prob")
+        plt.savefig("treatment_prob_pred.png")
         return {"T_prob_pred": T_prob_pred}
 
     # T_ProbとT_Prob_predのRMSEを計算
@@ -339,7 +342,11 @@ class DatasetGenerator:
         # import pdb
 
         # pdb.set_trace()
-
+        plt.clf()
+        plt.hist(doubly_robust["y_r_dr"][T==1], bins=20, alpha=0.5, label="y_r_dr_treatment")
+        plt.hist(doubly_robust["y_r_dr"][T==0], bins=20, alpha=0.5, label="y_r_dr_control")
+        plt.legend()
+        plt.savefig("y_r_dr.png")
         return doubly_robust
 
     def culculate_ipw(
